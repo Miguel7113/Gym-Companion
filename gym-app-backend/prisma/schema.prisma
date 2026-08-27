@@ -1,0 +1,406 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Gym {
+  id               String   @id @default(uuid())
+  name             String
+  logoUrl          String?  @map("logo_url")
+  primaryColor     String?  @map("primary_color")
+  contactEmail     String?  @map("contact_email")
+  subscriptionTier String   @default("trial") @map("subscription_tier")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  roster           GymRoster[]
+  users            User[]
+  staff            GymStaff[]
+  workoutSessions  WorkoutSession[]
+  achievements     UserAchievement[]
+  posts            Post[]
+  workoutTemplates WorkoutTemplate[]
+
+  @@map("gyms")
+}
+
+model GymStaff {
+  id             String   @id @default(uuid())
+  gymId          String   @map("gym_id")
+  email          String   @unique
+  role           String   @default("admin")
+  authProviderId String?  @map("auth_provider_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  gym Gym @relation(fields: [gymId], references: [id])
+
+  @@index([authProviderId])
+  @@map("gym_staff")
+}
+
+model GymRoster {
+  id               String   @id @default(uuid())
+  gymId            String   @map("gym_id")
+  email            String?
+  phone            String?
+  memberName       String?  @map("member_name")
+  externalMemberId String?  @map("external_member_id")
+  status           String   @default("unmatched")
+  matchedUserId    String?  @map("matched_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  gym Gym @relation(fields: [gymId], references: [id])
+
+  @@unique([gymId, email])
+  @@unique([gymId, phone])
+  @@index([gymId])
+  @@map("gym_roster")
+}
+
+model User {
+  id               String   @id @default(uuid())
+  gymId            String   @map("gym_id")
+  rosterId         String?  @map("roster_id")
+  email            String?
+  phone            String?
+  displayName      String?  @map("display_name")
+  gender           String?  // 'male' | 'female' | 'other' | null
+  bodyWeightKg     Decimal? @map("body_weight_kg") @db.Decimal(5, 2)
+  heightCm         Decimal? @map("height_cm") @db.Decimal(5, 1)
+  subscriptionTier String   @default("free") @map("subscription_tier")
+  authProviderId   String?  @unique @map("auth_provider_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  gym              Gym                    @relation(fields: [gymId], references: [id])
+  workoutSessions  WorkoutSession[]
+  customExercises  Exercise[]             @relation("CustomExercises")
+  userSessions     UserSession[]
+  pushTokens       PushToken[]
+  achievements     UserAchievement[]
+  posts            Post[]
+  postLikes        PostLike[]
+  postComments     PostComment[]
+  postFlags        PostFlag[]
+  savedExercises   SavedExercise[]
+  savedPrograms    SavedProgram[]
+  recentlyUsed     RecentlyUsedExercise[]
+  workoutTemplates WorkoutTemplate[]      @relation("TemplateCreator")
+
+  @@map("users")
+}
+
+model Exercise {
+  // ── Core identity ──────────────────────────────────────────────────────────
+  id              String   @id @default(uuid())
+  name            String
+
+  // externalId: ExerciseDB's own ID (e.g. "01qpYSe"). Stored so the seeder
+  // can upsert safely — if the seed runs twice, it matches on this field
+  // instead of creating duplicates. Null for custom user-created exercises.
+  externalId      String?  @unique @map("external_id")
+
+  // ── Classification ─────────────────────────────────────────────────────────
+  category        String?
+  bodyParts       String[] @map("body_parts")
+  targetMuscles   String[] @map("target_muscles")
+  secondaryMuscles String[] @map("secondary_muscles")
+  equipments      String[]
+  difficulty      String?
+  exerciseTypes   String[] @map("exercise_types")
+
+  // ── Media ──────────────────────────────────────────────────────────────────
+  gifUrl          String?  @map("gif_url")
+  imageUrls       Json?    @map("image_urls")
+
+  // ── Guidance ───────────────────────────────────────────────────────────────
+  overview        String?
+  instructions    String[]
+
+  // ── Authorship ─────────────────────────────────────────────────────────────
+  isCustom        Boolean  @default(false) @map("is_custom")
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  createdByUser User?                     @relation("CustomExercises", fields: [createdByUserId], references: [id])
+  sets          WorkoutSet[]
+  achievements  UserAchievement[]
+  templateUses  WorkoutTemplateExercise[]
+  savedBy       SavedExercise[]
+  recentlyUsed  RecentlyUsedExercise[]
+
+  @@index([externalId])
+  @@index([bodyParts])
+  @@map("exercises")
+}
+
+model WorkoutSession {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  gymId     String    @map("gym_id")
+  startedAt DateTime  @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  notes     String?
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  user User         @relation(fields: [userId], references: [id])
+  gym  Gym          @relation(fields: [gymId], references: [id])
+  sets WorkoutSet[]
+
+  @@index([userId])
+  @@map("workout_sessions")
+}
+
+model WorkoutSet {
+  id           String    @id @default(uuid())
+  sessionId    String    @map("session_id")
+  exerciseId   String    @map("exercise_id")
+  setNumber    Int?      @map("set_number")
+  // Strength fields
+  reps         Int?
+  weightKg     Decimal?  @map("weight_kg") @db.Decimal(10, 2)
+  rpe          Decimal?  @db.Decimal(3, 1)
+  assistKg     Decimal?  @map("assist_kg") @db.Decimal(5, 2)
+  // Cardio fields
+  durationSecs Int?      @map("duration_secs")
+  distanceM    Decimal?  @map("distance_m") @db.Decimal(10, 2)
+  speedKph     Decimal?  @map("speed_kph") @db.Decimal(5, 2)
+  // Soft delete
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  session  WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise Exercise       @relation(fields: [exerciseId], references: [id])
+
+  @@index([sessionId])
+  @@map("workout_sets")
+}
+
+// ============================================================
+// Session Persistence, Push Tokens, Achievements
+// ============================================================
+
+model UserSession {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  refreshToken String    @unique @map("refresh_token")
+  deviceInfo   String?   @map("device_info")
+  platform     String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastUsedAt   DateTime  @default(now()) @map("last_used_at")
+  expiresAt    DateTime? @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model PushToken {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  deviceToken String   @unique @map("device_token")
+  platform    String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
+model UserAchievement {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  gymId           String   @map("gym_id")
+  achievementType String   @map("achievement_type")
+  value           String?
+  exerciseId      String?  @map("exercise_id")
+  earnedAt        DateTime @default(now()) @map("earned_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gym      Gym       @relation(fields: [gymId], references: [id])
+  exercise Exercise? @relation(fields: [exerciseId], references: [id])
+  posts    Post[]
+
+  @@index([userId])
+  @@index([gymId])
+  @@map("user_achievements")
+}
+
+// ============================================================
+// Social Feed
+// ============================================================
+
+model Post {
+  id              String   @id @default(uuid())
+  gymId           String   @map("gym_id")
+  userId          String   @map("user_id")
+  content         String?
+  imageUrl        String?  @map("image_url")
+  achievementType String?  @map("achievement_type")
+  achievementId   String?  @map("achievement_id")
+  isFlagged       Boolean  @default(false) @map("is_flagged")
+  isDeleted       Boolean  @default(false) @map("is_deleted")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  gym         Gym              @relation(fields: [gymId], references: [id])
+  user        User             @relation(fields: [userId], references: [id])
+  achievement UserAchievement? @relation(fields: [achievementId], references: [id])
+  likes       PostLike[]
+  comments    PostComment[]
+  flags       PostFlag[]
+
+  @@index([gymId])
+  @@index([userId])
+  @@map("posts")
+}
+
+model PostLike {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@map("post_likes")
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  content   String
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([postId])
+  @@map("post_comments")
+}
+
+model PostFlag {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@map("post_flags")
+}
+
+// ============================================================
+// Workout Builder: Templates, Saved, Recently Used
+// ============================================================
+
+model WorkoutTemplate {
+  id              String   @id @default(uuid())
+  gymId           String?  @map("gym_id")
+  createdByUserId String?  @map("created_by_user_id")
+  name            String
+  description     String?
+  category        String?
+  difficulty      String?
+  durationMins    Int?     @map("duration_mins")
+  source          String   @default("system")
+  imageUrl        String?  @map("image_url")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  gym       Gym?                      @relation(fields: [gymId], references: [id])
+  createdBy User?                     @relation("TemplateCreator", fields: [createdByUserId], references: [id])
+  exercises WorkoutTemplateExercise[]
+  savedBy   SavedProgram[]
+
+  @@index([gymId])
+  @@index([source])
+  @@map("workout_templates")
+}
+
+model WorkoutTemplateExercise {
+  id                  String   @id @default(uuid())
+  templateId          String   @map("template_id")
+  exerciseId          String   @map("exercise_id")
+  sortOrder           Int      @default(0) @map("sort_order")
+  defaultSets         Int?     @map("default_sets")
+  defaultReps         Int?     @map("default_reps")
+  defaultWeightKg     Decimal? @map("default_weight_kg") @db.Decimal(6, 2)
+  defaultDurationSecs Int?     @map("default_duration_secs")
+  defaultDistanceM    Decimal? @map("default_distance_m") @db.Decimal(10, 2)
+  notes               String?
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  template WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exercise Exercise        @relation(fields: [exerciseId], references: [id])
+
+  @@index([templateId])
+  @@map("workout_template_exercises")
+}
+
+model SavedExercise {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  exerciseId String   @map("exercise_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([userId])
+  @@map("saved_exercises")
+}
+
+model SavedProgram {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  templateId String   @map("template_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, templateId])
+  @@index([userId])
+  @@map("saved_programs")
+}
+
+model RecentlyUsedExercise {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  exerciseId String   @map("exercise_id")
+  usedAt     DateTime @default(now()) @map("used_at")
+  useCount   Int      @default(1) @map("use_count")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([userId, usedAt(sort: Desc)])
+  @@map("recently_used_exercises")
+}

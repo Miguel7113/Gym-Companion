@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Pulse - Create Post</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@700&amp;family=Oswald:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "error-container": "#93000a",
+                    "on-primary": "#283500",
+                    "on-tertiary-fixed-variant": "#474746",
+                    "secondary-fixed-dim": "#c8c6c5",
+                    "secondary-container": "#4a4949",
+                    "on-secondary-fixed-variant": "#474646",
+                    "on-error": "#690005",
+                    "surface-container-low": "#1a1b1f",
+                    "surface-container-lowest": "#0d0e12",
+                    "on-tertiary": "#313030",
+                    "on-secondary-container": "#bab8b7",
+                    "surface-container": "#1e1f23",
+                    "primary-fixed": "#c3f400",
+                    "on-primary-fixed": "#161e00",
+                    "surface-dim": "#121317",
+                    "surface": "#121317",
+                    "on-primary-fixed-variant": "#3c4d00",
+                    "on-error-container": "#ffdad6",
+                    "on-surface-variant": "#c4c9ac",
+                    "outline": "#8e9379",
+                    "tertiary": "#ffffff",
+                    "error": "#ffb4ab",
+                    "surface-variant": "#343539",
+                    "on-tertiary-fixed": "#1c1b1b",
+                    "on-tertiary-container": "#656464",
+                    "tertiary-fixed-dim": "#c8c6c5",
+                    "inverse-primary": "#506600",
+                    "on-secondary": "#313030",
+                    "primary-fixed-dim": "#abd600",
+                    "on-surface": "#e3e2e7",
+                    "inverse-surface": "#e3e2e7",
+                    "primary": "#ffffff",
+                    "on-secondary-fixed": "#1c1b1b",
+                    "surface-container-high": "#292a2e",
+                    "background": "#121317",
+                    "secondary-fixed": "#e5e2e1",
+                    "surface-container-highest": "#343539",
+                    "on-background": "#e3e2e7",
+                    "inverse-on-surface": "#2f3034",
+                    "outline-variant": "#444933",
+                    "tertiary-container": "#e5e2e1",
+                    "tertiary-fixed": "#e5e2e1",
+                    "primary-container": "#c3f400",
+                    "surface-tint": "#abd600",
+                    "on-primary-container": "#556d00",
+                    "secondary": "#c8c6c5",
+                    "surface-bright": "#38393d"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "16px",
+                    "stack-lg": "40px",
+                    "stack-md": "24px",
+                    "container-margin": "20px",
+                    "unit": "8px",
+                    "stack-sm": "12px"
+            },
+            "fontFamily": {
+                    "stat-lg": [
+                            "Oswald"
+                    ],
+                    "display-lg": [
+                            "Oswald"
+                    ],
+                    "body-lg": [
+                            "Inter"
+                    ],
+                    "label-caps": [
+                            "JetBrains Mono"
+                    ],
+                    "body-md": [
+                            "Inter"
+                    ],
+                    "headline-md": [
+                            "Oswald"
+                    ],
+                    "headline-lg-mobile": [
+                            "Oswald"
+                    ],
+                    "headline-lg": [
+                            "Oswald"
+                    ]
+            },
+            "fontSize": {
+                    "stat-lg": [
+                            "36px",
+                            {
+                                    "lineHeight": "44px",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "display-lg": [
+                            "48px",
+                            {
+                                    "lineHeight": "56px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-lg": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "label-caps": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.1em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-lg-mobile": [
+                            "28px",
+                            {
+                                    "lineHeight": "34px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-lg": [
+                            "32px",
+                            {
+                                    "lineHeight": "40px",
+                                    "letterSpacing": "0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ]
+            }
+    },
+        },
+      }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(18, 19, 23, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glow-active {
+            box-shadow: 0 0 20px rgba(204, 255, 0, 0.15);
+        }
+        
+        /* Hide scrollbar for horizontal scrolling */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background antialiased min-h-screen flex flex-col selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-md border-b border-white/10 flex justify-between items-center px-gutter h-16 w-full">
+<button class="text-on-surface-variant hover:opacity-80 scale-95 active:transition-transform">
+<span class="material-symbols-outlined">close</span>
+</button>
+<h1 class="font-display-lg text-headline-lg-mobile text-primary-fixed tracking-wider">NEW POST</h1>
+<div class="w-6"></div> <!-- Spacer for centering -->
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 mt-16 mb-safe pb-24 px-gutter py-stack-md flex flex-col gap-stack-lg max-w-2xl mx-auto w-full">
+<!-- Photo Upload / Preview Area -->
+<section class="w-full aspect-[4/5] rounded-xl overflow-hidden glass-panel relative group cursor-pointer border border-white/10 hover:border-primary-fixed/50 transition-colors flex flex-col items-center justify-center">
+<div class="absolute inset-0 bg-cover bg-center w-full h-full opacity-40 group-hover:opacity-60 transition-opacity z-0" data-alt="A moody, high-contrast, dark-mode photography shot of a gym setting, focusing heavily on shadows and intense, focused lighting. The scene features heavy iron weights and raw gym equipment, illuminated by subtle, cold light and perhaps a hint of neon lime reflection, emphasizing a gritty, elite performance aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCHjfy-x1j_PjNmOzlGOx44AHNX6kRa0QuWJZAvWP5wHNllUTQsFzEw24koOq8Akn4Jsuyd9nJpuI_MhaNpHvjJPzziLXwbhcDhQXtAD38OskyPMe5J15g2kPNXNh6pqgyJ3eKZxuY27zHlS60vKIM7fz471uq1oc-7ZzrTpKbUv3TE6zCmlDJO07w4vXvml0Dsq2kY49zhDQPHaE8Zo9FNkSAsMxGfmVx8BCxahy2A6P7HJshdAYYw9JjCjQPZ9sM6LJZ35cq5cr8')"></div>
+<div class="relative z-10 flex flex-col items-center gap-unit text-center">
+<span class="material-symbols-outlined text-stat-lg text-primary-fixed drop-shadow-md">add_a_photo</span>
+<p class="font-label-caps text-label-caps text-on-surface uppercase tracking-widest mt-2">Add Photo or Video</p>
+</div>
+<div class="absolute bottom-4 right-4 z-10">
+<button class="bg-surface-container-high rounded-full p-2 border border-white/10 text-on-surface hover:text-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-xl">edit</span>
+</button>
+</div>
+</section>
+<!-- Caption Input -->
+<section class="w-full">
+<textarea class="w-full bg-transparent border-0 border-b border-white/10 focus:border-primary-fixed focus:ring-0 px-0 py-unit font-body-lg text-body-lg text-on-background placeholder-on-surface-variant resize-none" placeholder="Describe your session..." rows="3"></textarea>
+</section>
+<!-- Achievement Tags -->
+<section class="flex flex-col gap-unit">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">Achievements &amp; Tags</label>
+<div class="flex gap-2 overflow-x-auto no-scrollbar pb-2 pt-1">
+<!-- Selected Tag -->
+<button class="whitespace-nowrap rounded-full px-4 py-2 border border-primary-fixed bg-primary-fixed/10 text-primary-fixed font-label-caps text-label-caps flex items-center gap-2 glow-active">
+<span class="material-symbols-outlined text-[16px]">local_fire_department</span>
+                    PR: 140 KG
+                </button>
+<button class="whitespace-nowrap rounded-full px-4 py-2 border border-white/10 bg-surface-container-high text-on-surface font-label-caps text-label-caps flex items-center gap-2 hover:border-white/30 transition-colors">
+<span class="material-symbols-outlined text-[16px]">timer</span>
+                    2H SESSION
+                </button>
+<button class="whitespace-nowrap rounded-full px-4 py-2 border border-white/10 bg-surface-container-high text-on-surface font-label-caps text-label-caps flex items-center gap-2 hover:border-white/30 transition-colors">
+<span class="material-symbols-outlined text-[16px]">fitness_center</span>
+                    SQUAT
+                </button>
+<button class="whitespace-nowrap rounded-full px-4 py-2 border border-dashed border-white/20 text-on-surface-variant font-label-caps text-label-caps flex items-center gap-1 hover:text-primary-fixed hover:border-primary-fixed/50 transition-colors">
+<span class="material-symbols-outlined text-[16px]">add</span>
+                    ADD TAG
+                </button>
+</div>
+</section>
+<!-- Settings Toggles -->
+<section class="glass-panel rounded-lg p-4 flex flex-col gap-4">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant">public</span>
+<div>
+<p class="font-body-md text-body-md text-on-surface">Public to Gym</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">Anyone in your gym network can view</p>
+</div>
+</div>
+<!-- Custom Toggle Switch -->
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-fixed"></div>
+</label>
+</div>
+<div class="h-px bg-white/10 w-full"></div>
+<div class="flex justify-between items-center opacity-50">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant">group</span>
+<div>
+<p class="font-body-md text-body-md text-on-surface">Followers Only</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">Restricted visibility</p>
+</div>
+</div>
+<!-- Custom Toggle Switch -->
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" disabled="" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-fixed"></div>
+</label>
+</div>
+</section>
+</main>
+<!-- Bottom Action Bar (Fixed) -->
+<div class="fixed bottom-0 left-0 w-full p-4 bg-surface/90 backdrop-blur-xl border-t border-white/5 pb-safe z-40">
+<div class="max-w-2xl mx-auto w-full">
+<button class="w-full bg-primary-fixed text-on-primary-fixed font-stat-lg text-headline-md py-3 rounded-lg uppercase tracking-wide hover:opacity-90 active:scale-95 transition-all shadow-[0_0_20px_rgba(195,244,0,0.3)]">
+                POST TO FEED
+            </button>
+</div>
+</div>
+</body></html>

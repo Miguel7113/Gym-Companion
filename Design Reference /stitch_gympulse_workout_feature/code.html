@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Pulse - Workout Complete</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;700&amp;family=Oswald:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "error-container": "#93000a",
+                      "on-primary": "#283500",
+                      "on-tertiary-fixed-variant": "#474746",
+                      "secondary-fixed-dim": "#c8c6c5",
+                      "secondary-container": "#4a4949",
+                      "on-secondary-fixed-variant": "#474646",
+                      "on-error": "#690005",
+                      "surface-container-low": "#1a1b1f",
+                      "surface-container-lowest": "#0d0e12",
+                      "on-tertiary": "#313030",
+                      "on-secondary-container": "#bab8b7",
+                      "surface-container": "#1e1f23",
+                      "primary-fixed": "#c3f400",
+                      "on-primary-fixed": "#161e00",
+                      "surface-dim": "#121317",
+                      "surface": "#121317",
+                      "on-primary-fixed-variant": "#3c4d00",
+                      "on-error-container": "#ffdad6",
+                      "on-surface-variant": "#c4c9ac",
+                      "outline": "#8e9379",
+                      "tertiary": "#ffffff",
+                      "error": "#ffb4ab",
+                      "surface-variant": "#343539",
+                      "on-tertiary-fixed": "#1c1b1b",
+                      "on-tertiary-container": "#656464",
+                      "tertiary-fixed-dim": "#c8c6c5",
+                      "inverse-primary": "#506600",
+                      "on-secondary": "#313030",
+                      "primary-fixed-dim": "#abd600",
+                      "on-surface": "#e3e2e7",
+                      "inverse-surface": "#e3e2e7",
+                      "primary": "#ffffff",
+                      "on-secondary-fixed": "#1c1b1b",
+                      "surface-container-high": "#292a2e",
+                      "background": "#121317",
+                      "secondary-fixed": "#e5e2e1",
+                      "surface-container-highest": "#343539",
+                      "on-background": "#e3e2e7",
+                      "inverse-on-surface": "#2f3034",
+                      "outline-variant": "#444933",
+                      "tertiary-container": "#e5e2e1",
+                      "tertiary-fixed": "#e5e2e1",
+                      "primary-container": "#c3f400",
+                      "surface-tint": "#abd600",
+                      "on-primary-container": "#556d00",
+                      "secondary": "#c8c6c5",
+                      "surface-bright": "#38393d"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "gutter": "16px",
+                      "stack-lg": "40px",
+                      "stack-md": "24px",
+                      "container-margin": "20px",
+                      "unit": "8px",
+                      "stack-sm": "12px"
+              },
+              "fontFamily": {
+                      "stat-lg": [
+                              "Oswald"
+                      ],
+                      "display-lg": [
+                              "Oswald"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-caps": [
+                              "JetBrains Mono"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Oswald"
+                      ],
+                      "headline-lg-mobile": [
+                              "Oswald"
+                      ],
+                      "headline-lg": [
+                              "Oswald"
+                      ]
+              },
+              "fontSize": {
+                      "stat-lg": [
+                              "36px",
+                              {
+                                      "lineHeight": "44px",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.1em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "28px",
+                              {
+                                      "lineHeight": "34px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+            },
+          }
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(18, 19, 23, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .neon-glow {
+            box-shadow: 0 0 20px rgba(195, 244, 0, 0.15);
+        }
+        
+        .bg-gradient-scrim {
+            background: linear-gradient(to top, rgba(18,19,23,1) 0%, rgba(18,19,23,0.8) 40%, rgba(18,19,23,0.3) 100%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen relative font-body-md selection:bg-primary-fixed selection:text-on-primary-fixed overflow-x-hidden pb-24 md:pb-0">
+<!-- Background Image with Overlay -->
+<div class="fixed inset-0 z-0">
+<div class="absolute inset-0 bg-cover bg-center opacity-40" data-alt="Dark, moody, high-contrast photography of a modern elite gym environment. Focus on heavy matte black weight plates and barbells illuminated by subtle, dramatic rim lighting in neon green and cool white. Deep charcoal shadows and a sense of raw intensity, capturing the 'Pulse' brand aesthetic of controlled adrenaline." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA76Odn7VBVHRhIDLXF0XYf9iEF4o-ST6coZaGNJZL8bEhE-Wdzw3ZyQfcD8CmdzwM_UTlCESp4Hj3j7iycibfk3Si0VkvahoCsU6Iw2L4RuDI2n4iTrMBWjUQbS1N15gJ_5sAzIVFHH1wQC0DKqAQ_jXcmFnBkNPCYesBwytEV7RfYUiHk_NbgxIFoR1I2hbjdLsv1Pv1ZjWgFwzh2-4pPtItlu56p0LeL4tU12ZLZRQKstrQ55ILV2AzgVUNDfig5j1qbmZP-PPI')"></div>
+<div class="absolute inset-0 bg-gradient-scrim"></div>
+</div>
+<!-- Main Content Container -->
+<main class="relative z-10 max-w-lg mx-auto w-full min-h-screen flex flex-col pt-safe pb-safe md:justify-center md:items-center">
+<!-- Header -->
+<header class="w-full text-center py-stack-md flex-shrink-0">
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile md:font-headline-lg md:text-headline-lg text-primary tracking-widest uppercase">WORKOUT COMPLETE</h1>
+</header>
+<!-- Content Canvas -->
+<div class="flex-grow flex flex-col gap-stack-md px-gutter w-full pb-stack-lg">
+<!-- Hero Stat Area -->
+<div class="text-center py-stack-lg">
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-unit">Total Duration</p>
+<div class="font-display-lg text-display-lg text-primary-fixed">52 MIN</div>
+</div>
+<!-- Metrics Bento Grid -->
+<div class="grid grid-cols-3 gap-unit">
+<div class="glass-panel rounded-lg p-unit flex flex-col items-center justify-center text-center h-24">
+<span class="material-symbols-outlined text-outline mb-1 text-xl" style="font-variation-settings: 'wght' 300;">fitness_center</span>
+<span class="font-stat-lg text-stat-lg text-primary text-xl leading-none">8,420</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant text-[10px]">KG VOL</span>
+</div>
+<div class="glass-panel rounded-lg p-unit flex flex-col items-center justify-center text-center h-24">
+<span class="material-symbols-outlined text-outline mb-1 text-xl" style="font-variation-settings: 'wght' 300;">list</span>
+<span class="font-stat-lg text-stat-lg text-primary text-xl leading-none">22</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant text-[10px]">SETS</span>
+</div>
+<div class="glass-panel rounded-lg p-unit flex flex-col items-center justify-center text-center h-24">
+<span class="material-symbols-outlined text-outline mb-1 text-xl" style="font-variation-settings: 'wght' 300;">local_fire_department</span>
+<span class="font-stat-lg text-stat-lg text-primary text-xl leading-none">480</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant text-[10px]">KCAL</span>
+</div>
+</div>
+<!-- PR Celebration Badge -->
+<div class="glass-panel neon-glow rounded-xl p-4 flex items-center justify-between mt-unit border-primary-fixed/30 relative overflow-hidden group cursor-pointer hover:border-primary-fixed transition-colors">
+<div class="absolute inset-0 bg-primary-fixed/5 opacity-50"></div>
+<div class="flex items-center gap-3 relative z-10">
+<div class="w-10 h-10 rounded-full bg-primary-fixed/20 flex items-center justify-center text-primary-fixed">
+<span class="material-symbols-outlined" style="font-variation-settings: 'wght' 400;">military_tech</span>
+</div>
+<div>
+<div class="font-label-caps text-label-caps text-primary-fixed uppercase tracking-wider">New Personal Record</div>
+<div class="font-body-md text-body-md text-on-surface text-sm">Deadlift - 140kg x 5</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary-fixed relative z-10 group-hover:translate-x-1 transition-transform" style="font-variation-settings: 'wght' 300;">chevron_right</span>
+</div>
+<!-- Share Action -->
+<button class="w-full py-4 glass-panel rounded-full font-headline-md text-headline-md text-primary uppercase text-lg hover:bg-surface-variant transition-colors flex items-center justify-center gap-2 mt-stack-md active:scale-95 duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'wght' 300;">share</span>
+                Share to Pulse Feed
+            </button>
+<!-- Recovery Playlist Card -->
+<div class="mt-stack-sm relative rounded-xl overflow-hidden glass-panel p-4 flex items-center justify-between">
+<div class="absolute inset-0 bg-cover bg-center opacity-20 z-0" data-alt="Abstract, moody gradient texture featuring deep charcoal blending into subtle neon electric lime and muted cyan, evoking a calming yet energetic 'recovery' mood for a music playlist cover." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBjk1tgpRSaL5CSMEBDSNQYZr0hqni9bid_IyAJJrkvH_nYrUyImfcTg-tJADqZUHn5ReR5Q1NovSs7HXIpF3lYF_NPtcGemrJgDVvtb9oxHJmlOii7qOg_mI-idq3oaibaC35l_ItUHgFC923C8ukekx5zfzssugGkch8qtZ83d1d8C3U8ooDBjFEcXBJ58a-tfNqQBNpqxMY1w0JhkT4JA-vu4JcbBOTNR0RZ-TuakYlD60f-YgOxV9R1UPEhs5JLNyuY4nUqmco')"></div>
+<div class="relative z-10 flex items-center gap-4 w-full">
+<div class="w-14 h-14 bg-surface-container-high rounded flex-shrink-0 relative overflow-hidden flex items-center justify-center">
+<span class="material-symbols-outlined text-outline" style="font-variation-settings: 'wght' 200; font-size: 32px;">graphic_eq</span>
+</div>
+<div class="flex-grow">
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">RECOVERY PLAYLIST</div>
+<div class="font-body-md text-body-md text-on-background font-medium">Deep House Cool Down</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center text-primary hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'wght' 400; font-variation-settings: 'FILL' 1;">open_in_new</span>
+</button>
+</div>
+</div>
+<!-- Primary Done Action (Fixed to bottom) -->
+<div class="mt-auto pt-stack-lg pb-4">
+<button class="w-full bg-primary-fixed text-on-primary-fixed py-4 rounded-full font-headline-md text-headline-md text-xl uppercase tracking-wide hover:bg-primary-fixed-dim transition-colors active:scale-95 duration-200 shadow-[0_0_20px_rgba(195,244,0,0.2)]">
+                    DONE
+                </button>
+</div>
+</div>
+</main>
+</body></html>

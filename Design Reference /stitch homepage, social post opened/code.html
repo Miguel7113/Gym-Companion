@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Pulse - Post Detail</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error-container": "#93000a",
+                        "on-primary": "#283500",
+                        "on-tertiary-fixed-variant": "#474746",
+                        "secondary-fixed-dim": "#c8c6c5",
+                        "secondary-container": "#4a4949",
+                        "on-secondary-fixed-variant": "#474646",
+                        "on-error": "#690005",
+                        "surface-container-low": "#1a1b1f",
+                        "surface-container-lowest": "#0d0e12",
+                        "on-tertiary": "#313030",
+                        "on-secondary-container": "#bab8b7",
+                        "surface-container": "#1e1f23",
+                        "primary-fixed": "#c3f400",
+                        "on-primary-fixed": "#161e00",
+                        "surface-dim": "#121317",
+                        "surface": "#121317",
+                        "on-primary-fixed-variant": "#3c4d00",
+                        "on-error-container": "#ffdad6",
+                        "on-surface-variant": "#c4c9ac",
+                        "outline": "#8e9379",
+                        "tertiary": "#ffffff",
+                        "error": "#ffb4ab",
+                        "surface-variant": "#343539",
+                        "on-tertiary-fixed": "#1c1b1b",
+                        "on-tertiary-container": "#656464",
+                        "tertiary-fixed-dim": "#c8c6c5",
+                        "inverse-primary": "#506600",
+                        "on-secondary": "#313030",
+                        "primary-fixed-dim": "#abd600",
+                        "on-surface": "#e3e2e7",
+                        "inverse-surface": "#e3e2e7",
+                        "primary": "#ffffff",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "surface-container-high": "#292a2e",
+                        "background": "#121317",
+                        "secondary-fixed": "#e5e2e1",
+                        "surface-container-highest": "#343539",
+                        "on-background": "#e3e2e7",
+                        "inverse-on-surface": "#2f3034",
+                        "outline-variant": "#444933",
+                        "tertiary-container": "#e5e2e1",
+                        "tertiary-fixed": "#e5e2e1",
+                        "primary-container": "#c3f400",
+                        "surface-tint": "#abd600",
+                        "on-primary-container": "#556d00",
+                        "secondary": "#c8c6c5",
+                        "surface-bright": "#38393d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "stack-lg": "40px",
+                        "stack-md": "24px",
+                        "container-margin": "20px",
+                        "unit": "8px",
+                        "stack-sm": "12px"
+                    },
+                    "fontFamily": {
+                        "stat-lg": ["Oswald"],
+                        "display-lg": ["Oswald"],
+                        "body-lg": ["Inter"],
+                        "label-caps": ["JetBrains Mono"],
+                        "body-md": ["Inter"],
+                        "headline-md": ["Oswald"],
+                        "headline-lg-mobile": ["Oswald"],
+                        "headline-lg": ["Oswald"]
+                    },
+                    "fontSize": {
+                        "stat-lg": ["36px", { "lineHeight": "44px", "fontWeight": "700" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "500" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "34px", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "0.01em", "fontWeight": "600" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(18, 19, 23, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-glow {
+            box-shadow: 0 0 20px rgba(204, 255, 0, 0.15);
+        }
+        .text-neon {
+            text-shadow: 0 0 10px rgba(204, 255, 0, 0.3);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen flex flex-col font-body-md antialiased pb-32">
+<!-- Top App Bar (Modified for detail view - showing back button) -->
+<header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-md border-b border-white/10 flex justify-between items-center px-gutter h-16 w-full">
+<button class="text-on-surface hover:opacity-80 scale-95 active:transition-transform p-2 -ml-2 rounded-full hover:bg-white/5 transition-colors" onclick="history.back()">
+<span class="material-symbols-outlined text-2xl">arrow_back</span>
+</button>
+<span class="font-display-lg text-headline-lg-mobile text-primary-fixed tracking-wider">PULSE</span>
+<button class="text-on-surface hover:opacity-80 scale-95 active:transition-transform p-2 -mr-2 rounded-full hover:bg-white/5 transition-colors">
+<span class="material-symbols-outlined text-2xl">more_vert</span>
+</button>
+</header>
+<!-- Main Content -->
+<main class="flex-grow pt-16">
+<!-- Post Image -->
+<div class="relative w-full h-[530px] md:h-[618px] bg-surface-container-high">
+<img class="w-full h-full object-cover" data-alt="A moody, high-contrast photograph of a fitness athlete performing a heavy barbell squat in an industrial gym setting. Dramatic overhead lighting casts deep shadows on a charcoal background, highlighting muscle definition and chalk dust in the air. The aesthetic is gritty yet premium, with subtle electric lime neon accents reflecting off the metallic equipment. The mood is intense, focused, and adrenaline-fueled, perfectly capturing the peak moment of a raw workout." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDr9F_EQhBQWksVPbRuoHoYLloBCoucmjFCl9k64d1qiB_uEKP9z6VqEOUbjz0tKXgaYgE8azNNwmylYVqCVQ2WBjtpyVVJVDMoGahca9yw0n1wcyIV9hf_hOaTliptS1P_74VC7yi5zgtAXwSUmHjX9LZJwAKAVHmUpoE5ikHe-Wk88mOvEAPaC4A05JFEeVkkQMocksYCS6De7ye8xXhVawYoiRitTF6XlNhb8ZNUGcKx7kxN4tvR8_QJ7rWJBGPzIUmcoDBo59k"/>
+<!-- Gradient Scrim for text readability -->
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent"></div>
+<!-- Floating Stats & Header Info overlaid on image -->
+<div class="absolute bottom-0 left-0 w-full p-container-margin flex flex-col gap-unit">
+<!-- Stat Chips -->
+<div class="flex gap-2 mb-2">
+<span class="px-3 py-1 rounded-full bg-surface-container/80 backdrop-blur-md border border-white/10 font-label-caps text-label-caps text-primary-fixed tracking-widest shadow-[0_0_10px_rgba(204,255,0,0.1)]">140 KG</span>
+<span class="px-3 py-1 rounded-full bg-surface-container/80 backdrop-blur-md border border-white/10 font-label-caps text-label-caps text-on-surface tracking-widest">SQUAT</span>
+<span class="px-3 py-1 rounded-full bg-surface-container/80 backdrop-blur-md border border-white/10 font-label-caps text-label-caps text-on-surface tracking-widest">PR</span>
+</div>
+<!-- Post Author Header -->
+<div class="flex items-center gap-4 mt-2">
+<div class="w-12 h-12 rounded-full overflow-hidden border-2 border-primary-fixed neon-glow">
+<img class="w-full h-full object-cover" data-alt="A close-up portrait of a determined fitness enthusiast in a dark gym environment. High contrast lighting with a slight electric lime rim light catching the edge of their profile. Intense expression, sweaty, professional athletic vibe." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCY2vni2W1Mu9mVAVenGjEEvFGn_myV8D99C_eM5s4lFgp7j-MAOS1K33comCfQzN0gjwNSz6XFm5B0pUinGJjWvjV31DgJpZepb09rtt23t8SRVxDqy7cjlhYnY-H6WK0vaHB-1Jva9XGWCQkPfu8eVAlmqnjya9yQ6jrta4EK-GxS4FMtb-5Iy_5mje83YZsUx2gpesl5abocWNE4vQsCETy204KFayIYXY6A3cpugXgjBm5GrKonKZOU5LN3bwweCvGeHIDM1xQ"/>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-white m-0">MARCUS T.</h2>
+<p class="font-body-md text-body-md text-on-surface-variant m-0 text-sm opacity-80">2 hours ago • Ironforge Gym</p>
+</div>
+</div>
+<!-- Caption -->
+<p class="font-body-lg text-body-lg text-white mt-4 mb-2 leading-relaxed">
+                    Finally hit that 140kg mark on the back squat. Form held up better than expected. Next stop: 150. Let's keep grinding. 😤🔥
+                </p>
+<!-- Actions -->
+<div class="flex items-center gap-6 mt-2 pt-4 border-t border-white/10">
+<button class="flex items-center gap-2 text-primary-fixed group hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+<span class="font-label-caps text-label-caps text-lg">248</span>
+</button>
+<button class="flex items-center gap-2 text-on-surface-variant hover:text-white transition-colors">
+<span class="material-symbols-outlined text-3xl">chat_bubble</span>
+<span class="font-label-caps text-label-caps text-lg">42</span>
+</button>
+<button class="flex items-center gap-2 text-on-surface-variant hover:text-white transition-colors ml-auto">
+<span class="material-symbols-outlined text-3xl">share</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Comments Section -->
+<div class="px-container-margin py-stack-md flex flex-col gap-stack-sm max-w-4xl mx-auto">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-4">COMMENTS</h3>
+<!-- Comment 1 -->
+<div class="glass-panel p-4 rounded-xl flex gap-4">
+<div class="w-10 h-10 rounded-full overflow-hidden shrink-0">
+<img class="w-full h-full object-cover" data-alt="Avatar of a female athlete in a dark studio setting. High contrast, professional lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFRZ-5I5CptdO4oIgOBNx4ItiJK1T607zqGmz0p-EzlB26UeXB6-96zbA4HOHqTEIGQJuOd1WfuzNY2i-Ky7vHIaXWECVNJ42W7CwPDSm6AcIYydSDm2ln-fcUonmUou84G1Ug8kzew8Qo_7FSzE7UsPYsKdm38b81JwfDFqyCV2WpY--y6a0yw9nUHtZEszKe4vVsj_jtPV-bOAWYAonxJdHPacVC9NmM9fgSti35KNMtmVBYD19WZjPvmJ-n-8KA_7NUsdJV388"/>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-baseline mb-1">
+<span class="font-headline-md text-[18px] text-white">SARAH J.</span>
+<span class="font-label-caps text-[10px] text-on-surface-variant">45M AGO</span>
+</div>
+<p class="font-body-md text-on-surface text-sm">Insane depth on that rep! You made it look like a warmup. 💪</p>
+</div>
+<button class="text-on-surface-variant hover:text-primary-fixed shrink-0">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+<!-- Comment 2 -->
+<div class="glass-panel p-4 rounded-xl flex gap-4">
+<div class="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-primary-fixed/30">
+<img class="w-full h-full object-cover" data-alt="Avatar of a male fitness coach. Gritty, cinematic lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA1fmPbY2Xp0zsVoIf_aywyv3wTDBXeIjjVCKpSRkNz3_Zxq8DPrydYsduXgFARpCC8icbtOj9HbwvQmPs1QMq1TE_1WO7J9LPx_k7TuFomgW_WXrzNKNmp6a2e69g0CdkVHxAVIs-ret8zQKb7Rx79lEYq3ua64lKUxBC8ywn2Ynr4qAQAjS5YP4RDHKg0zko13IlV2xXfTdIkSPkTWXR7UVH7KDEUIdG64EFwvFYc7ckzGbNUF_NHVOfWjLJ1q_Nv-gYr35MmjaI"/>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-baseline mb-1">
+<span class="font-headline-md text-[18px] text-primary-fixed">COACH MIKE</span>
+<span class="font-label-caps text-[10px] text-on-surface-variant">1H AGO</span>
+</div>
+<p class="font-body-md text-on-surface text-sm">Solid work tracking the bar path. Keep bracing the core like we practiced.</p>
+</div>
+<button class="text-primary-fixed shrink-0">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">favorite</span>
+</button>
+</div>
+<!-- Comment 3 -->
+<div class="glass-panel p-4 rounded-xl flex gap-4">
+<div class="w-10 h-10 rounded-full overflow-hidden shrink-0">
+<img class="w-full h-full object-cover" data-alt="Avatar of an athletic user against a neon-lit background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbgUI0r6QvJ-fXwtfnQglvCtNeUqO5xXyBsaz119QxfE9lo__4U-Om_Ut23eNNcLh9uzaCoBQ1LduiWdGVwIySpfjo_rTBXxhjSkkzUXg3k4wjFoz_443v9reWl-S6d2gHBit5seHopl5GlWcBV1PVjo4aSXzXFTQrI3rSa50KG51JUdcQhKSino_Q5_oTEUyqelIlzumjwUfOYlzt0emb_N0mMHUZ6ZVsCThCx50gYeMMCCwtpTKSUi5bYo6DooJNEo_SmsINjBg"/>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-baseline mb-1">
+<span class="font-headline-md text-[18px] text-white">ALEX R.</span>
+<span class="font-label-caps text-[10px] text-on-surface-variant">1.5H AGO</span>
+</div>
+<p class="font-body-md text-on-surface text-sm">Beast mode activated! Next time I'm spotting you for 150kg.</p>
+</div>
+<button class="text-on-surface-variant hover:text-primary-fixed shrink-0">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+</div>
+</main>
+<!-- Sticky Comment Input -->
+<div class="fixed bottom-0 left-0 w-full bg-surface-container-highest/90 backdrop-blur-xl border-t border-white/10 p-4 pb-safe z-40 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+<div class="max-w-4xl mx-auto flex gap-3 items-center">
+<div class="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-white/20">
+<img class="w-full h-full object-cover" data-alt="Your user avatar. Moody lighting, athletic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzh_2WwUcc08JGNHTEA3rGsb0uPgqDbD-UgAhzWR10l-QML7bgAWif7d4uazo7URkaRaXdHCSxmeNcrRCjZXpLx7tG-agwWnD48MDV-vFW-eTJcwiQ4qGZdc1WkFsuaHfm1dDzGK0njcRJ7ADNssznXJua0E7CrSvZXyrKeSKiiM9vykmTC6W3I7XUSLnJhghxfSaD062zhof9kBNIyDzPxk_z9uC71ip0nuN5r20HSzHCiLa1sr-2IIWy4dknmy0LkPNZRO-UtDA"/>
+</div>
+<div class="flex-grow relative">
+<input class="w-full bg-surface-variant/50 border-0 border-b-2 border-white/10 text-white font-body-md text-sm py-3 px-4 focus:ring-0 focus:border-primary-fixed focus:bg-surface-variant/80 transition-all rounded-t-md placeholder:font-label-caps placeholder:text-on-surface-variant placeholder:text-xs" placeholder="ADD A COMMENT..." type="text"/>
+</div>
+<button class="bg-primary-fixed text-on-primary-fixed p-3 rounded-full hover:scale-95 transition-transform shrink-0 flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">send</span>
+</button>
+</div>
+</div>
+</body></html>

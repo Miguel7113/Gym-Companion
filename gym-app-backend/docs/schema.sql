@@ -1,0 +1,4 @@
+-- Full v1 schema — see docs/build-plan.md section 12 for notes and indexes.
+-- Only Gym, GymRoster, and User are implemented as Prisma models so far
+-- (prisma/schema.prisma). The rest are added as each module is built.
+-- (paste the full SQL from section 12 of the build plan here as each module's tables are added)

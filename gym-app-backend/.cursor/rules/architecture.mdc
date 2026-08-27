@@ -1,0 +1,31 @@
+---
+description: Core architecture rules — always apply
+alwaysApply: true
+---
+
+# Project: Gym Companion App (Dawn Digital)
+
+## Non-negotiable architecture rules
+- Front-ends (Flutter app, Next.js admin portal) NEVER call the database or
+  third-party APIs (Spotify, Open Food Facts, Claude/OpenAI, M-Pesa) directly.
+  They only call our own backend API.
+- The backend is organized into modules: auth, gyms, roster, workouts, food,
+  social, ai, imports, notifications, payments. A module owns its own tables.
+  If module A needs data from module B, it calls B's service function —
+  never queries B's tables directly. See auth.service.ts calling
+  RosterService as the reference example of this pattern.
+- All tables use UUID primary keys. Every member-facing table has a gymId
+  column for multi-tenancy — never create a table that mixes gyms without one.
+- We do NOT use git branches per gym. Multi-tenant/white-label work uses
+  build flavors (Flutter) and a shared codebase, one main branch.
+- Roster matching (authorization — "is this email on the gym's member list")
+  and OTP verification (authentication — "does this person own that email")
+  are separate concerns and must stay in separate services (RosterService
+  vs SupabaseService). Do not merge them.
+- Before creating a new database table or API endpoint, check
+  /docs/schema.sql and /docs/build-plan.md first — do not invent new
+  tables or endpoints that duplicate existing ones.
+
+## When unsure
+If a request conflicts with the schema in /docs/schema.sql, or would require
+a new top-level module, stop and ask before generating code.

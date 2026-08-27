@@ -1,0 +1,17 @@
+// ADD this model to your existing prisma/schema.prisma
+
+model GymApplication {
+  id            String   @id @default(uuid())
+  gymName       String   @map("gym_name")
+  contactName   String   @map("contact_name")
+  email         String
+  phone         String?
+  message       String?  // "tell us about your gym" free text from the form
+  status        String   @default("pending") // pending / approved / rejected
+  submittedAt   DateTime @default(now()) @map("submitted_at")
+  reviewedAt    DateTime? @map("reviewed_at")
+  // Set once approved — links to the Gym that got created as a result.
+  resultingGymId String?  @map("resulting_gym_id")
+
+  @@map("gym_applications")
+}

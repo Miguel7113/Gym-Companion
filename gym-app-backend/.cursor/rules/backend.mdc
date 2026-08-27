@@ -1,0 +1,18 @@
+---
+description: Backend API conventions
+globs: ["src/**/*.ts"]
+---
+
+- Stack: NestJS (TypeScript), Prisma + Postgres (Supabase), class-validator DTOs.
+- Every endpoint must validate input with a DTO before touching the database
+  — see roster/dto and auth/dto for the pattern. No raw request bodies
+  passed to Prisma calls.
+- Every new table needs a Prisma model added to prisma/schema.prisma and a
+  migration — never hand-edit the schema directly against a running database.
+- Roster matching logic lives ONLY in RosterService. AuthService calls it
+  — auth does not reimplement matching logic (see auth.service.ts).
+- Supabase is used only for OTP send/verify (SupabaseService). Do not use
+  it for anything else without updating this rule and the build plan.
+- Do not add new npm packages without flagging it in chat first.
+- New modules follow the existing folder pattern: <name>/<name>.module.ts,
+  <name>.controller.ts, <name>.service.ts, <name>/dto/*.dto.ts.
