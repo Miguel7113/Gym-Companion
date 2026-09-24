@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../models/auth_models.dart';
 import '../services/auth_service.dart';
@@ -27,6 +28,7 @@ class _OtpRequestScreenState extends ConsumerState<OtpRequestScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   bool _useEmail = true;
+  bool _isCoachLogin = false;
 
   // Focus nodes for ghost-input lime highlight behavior
   final _emailFocus = FocusNode();
@@ -64,6 +66,23 @@ class _OtpRequestScreenState extends ConsumerState<OtpRequestScreen> {
     final phone = !_useEmail ? _phoneController.text.trim() : null;
 
     try {
+      // Coach path: skip roster/OTP gate — go straight to password login.
+      if (_isCoachLogin) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LoginScreen(
+              gym: widget.gym,
+              email: email ?? '',
+              initialCoachLogin: true,
+            ),
+          ),
+        );
+        return;
+      }
+
       // ── Step 1: pre-check before sending anything ──────────────────────
       final check = await ref.read(authServiceProvider).checkMember(
         gymId: widget.gym.id,
@@ -146,20 +165,13 @@ class _OtpRequestScreenState extends ConsumerState<OtpRequestScreen> {
 
   void _showMagicLinkSentDialog() {
     final email = _emailController.text.trim();
-    showDialog(
-      context: context,
+    showAppInfoDialog(
+      context,
+      icon: Symbols.mark_email_unread,
+      title: 'Check your email',
+      message: 'We sent a sign-in link to $email. Tap it to log in; it opens '
+          'the app automatically.\n\nThe link expires in 1 hour.',
       barrierDismissible: false,
-      builder: (ctx) => _PulseDialog(
-        title: 'CHECK YOUR EMAIL',
-        message:
-            'We sent a sign-in link to $email.\n\n'
-            'Tap the link in your email to log in. '
-            'It will open the app automatically.\n\n'
-            'The link expires in 1 hour.',
-        icon: Symbols.mark_email_unread,
-        confirmLabel: 'GOT IT',
-        onConfirm: () => Navigator.pop(ctx),
-      ),
     );
   }
 
@@ -249,29 +261,30 @@ class _OtpRequestScreenState extends ConsumerState<OtpRequestScreen> {
 
                           const SizedBox(height: AppTheme.stackLg),
 
-                          // Email / Phone toggle
-                          Text(
-                            'CONTACT METHOD',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(color: AppTheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: AppTheme.stackSm),
-                          _ContactToggle(
-                            useEmail: _useEmail,
-                            onChanged: (v) =>
-                                setState(() => _useEmail = v),
-                          ),
-
-                          const SizedBox(height: AppTheme.stackMd),
+                          // Email / Phone toggle (coaches use email only)
+                          if (!_isCoachLogin) ...[
+                            Text(
+                              'Contact method',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelLarge
+                                  ?.copyWith(color: AppTheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: AppTheme.stackSm),
+                            _ContactToggle(
+                              useEmail: _useEmail,
+                              onChanged: (v) =>
+                                  setState(() => _useEmail = v),
+                            ),
+                            const SizedBox(height: AppTheme.stackMd),
+                          ],
 
                           // Email or Phone input
-                          if (_useEmail)
+                          if (_useEmail || _isCoachLogin)
                             _GhostField(
                               controller: _emailController,
                               focusNode: _emailFocus,
-                              label: 'EMAIL ADDRESS',
+                              label: 'Email address',
                               hint: 'your@email.com',
                               keyboardType: TextInputType.emailAddress,
                               icon: Symbols.mail,
@@ -291,7 +304,7 @@ class _OtpRequestScreenState extends ConsumerState<OtpRequestScreen> {
                             _GhostField(
                               controller: _phoneController,
                               focusNode: _phoneFocus,
-                              label: 'PHONE NUMBER',
+                              label: 'Phone number',
                               hint: '+2547XXXXXXXX',
                               keyboardType: TextInputType.phone,
                               icon: Symbols.phone,
@@ -303,16 +316,41 @@ class _OtpRequestScreenState extends ConsumerState<OtpRequestScreen> {
                               },
                             ),
 
+                          if (!_isCoachLogin) ...[
+                            const SizedBox(height: AppTheme.stackMd),
+                            _GhostField(
+                              controller: _displayNameController,
+                              focusNode: _nameFocus,
+                              label: 'Display name',
+                              hint: 'Optional — e.g. Marcus R.',
+                              icon: Symbols.person,
+                              validator: (_) => null,
+                            ),
+                          ],
+
                           const SizedBox(height: AppTheme.stackMd),
 
-                          // Display name (optional)
-                          _GhostField(
-                            controller: _displayNameController,
-                            focusNode: _nameFocus,
-                            label: 'DISPLAY NAME',
-                            hint: 'Optional — e.g. Marcus R.',
-                            icon: Symbols.person,
-                            validator: (_) => null,
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              "I'm a coach",
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            subtitle: Text(
+                              'Skip member check — use staff email & password',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppTheme.onSurfaceVariant,
+                                  ),
+                            ),
+                            value: _isCoachLogin,
+                            activeThumbColor: AppTheme.onPrimaryContainer,
+                            activeTrackColor: AppTheme.primaryContainer,
+                            onChanged: _isLoading
+                                ? null
+                                : (value) => setState(() {
+                                      _isCoachLogin = value;
+                                      if (value) _useEmail = true;
+                                    }),
                           ),
 
                           const SizedBox(height: AppTheme.stackLg),
@@ -325,20 +363,25 @@ class _OtpRequestScreenState extends ConsumerState<OtpRequestScreen> {
 
                           // Primary CTA
                           PrimaryButton(
-                            label: _useEmail ? 'Continue' : 'Send Code',
+                            label: _isCoachLogin
+                                ? 'Continue as coach'
+                                : (_useEmail ? 'Continue' : 'Send Code'),
                             isLoading: _isLoading,
-                            icon: _useEmail ? Symbols.arrow_forward : Symbols.send,
+                            icon: _isCoachLogin || _useEmail
+                                ? Symbols.arrow_forward
+                                : Symbols.send,
                             onPressed: _isLoading ? null : _requestOtp,
                           ),
 
                           const SizedBox(height: AppTheme.stackMd),
 
-                          // Helper text — changes based on method
                           Center(
                             child: Text(
-                              _useEmail
-                                  ? 'We\'ll check your membership, then sign you in.'
-                                  : 'We\'ll send a 6-digit code to your phone.',
+                              _isCoachLogin
+                                  ? 'Next: enter your staff password.'
+                                  : (_useEmail
+                                      ? 'We\'ll check your membership, then sign you in.'
+                                      : 'We\'ll send a 6-digit code to your phone.'),
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
@@ -442,7 +485,7 @@ class _GymHeader extends StatelessWidget {
                         ),
                   ),
                   Text(
-                    'MEMBER SIGN IN',
+                    'Member sign in',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: AppTheme.onSurfaceVariant,
                         ),
@@ -660,74 +703,6 @@ class _ErrorBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _PulseDialog — styled alert dialog replacing plain AlertDialog
-// ─────────────────────────────────────────────────────────────────────────────
-class _PulseDialog extends StatelessWidget {
-  final String title;
-  final String message;
-  final IconData icon;
-  final VoidCallback onConfirm;
-  final String confirmLabel;
-
-  const _PulseDialog({
-    required this.title,
-    required this.message,
-    required this.icon,
-    required this.onConfirm,
-    this.confirmLabel = 'OK',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppTheme.surfaceContainerHigh,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-        side: BorderSide(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.stackMd),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryContainer.withOpacity(0.12),
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: AppTheme.primaryContainer.withOpacity(0.3)),
-              ),
-              child: Icon(icon, color: AppTheme.primaryContainer, size: 28),
-            ),
-            const SizedBox(height: AppTheme.stackSm),
-            Text(
-              title,
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineMedium
-                  ?.copyWith(color: AppTheme.onSurface),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppTheme.unit),
-            Text(
-              message,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.onSurfaceVariant,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppTheme.stackMd),
-            PrimaryButton(label: confirmLabel, onPressed: onConfirm),
-          ],
-        ),
       ),
     );
   }

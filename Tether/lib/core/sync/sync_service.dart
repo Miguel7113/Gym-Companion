@@ -10,6 +10,7 @@ import '../database/daos/templates_dao.dart';
 import '../providers/api_provider.dart';
 import 'connectivity_provider.dart';
 import '../../features/workouts/models/workout_models.dart';
+import '../../features/social/services/pending_workout_share_queue.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SyncService
@@ -39,6 +40,7 @@ class SyncService {
   static const _seedDoneKey = 'exercise_cache_seeded_v1';
   static const _batchSize = 100;
   static const _maxSeedPages = 20;
+  Future<void>? _seedInFlight;
 
   // ── Seed ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +50,23 @@ class SyncService {
   ///
   /// Pass [force] = true to re-seed even if cache is fresh (e.g. after a
   /// manual "refresh" button tap).
-  Future<void> seedIfNeeded({bool force = false}) async {
+  Future<void> seedIfNeeded({bool force = false}) {
+    final existing = _seedInFlight;
+    if (existing != null) return existing;
+
+    final future = _seedIfNeeded(force: force);
+    _seedInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_seedInFlight, future)) _seedInFlight = null;
+    });
+  }
+
+  Future<bool> isExerciseSeedComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_seedDoneKey) ?? false;
+  }
+
+  Future<void> _seedIfNeeded({required bool force}) async {
     final isOnline = await checkIsOnline();
     if (!isOnline) {
       debugPrint('[SyncService] offline — skipping seed');
@@ -57,7 +75,9 @@ class SyncService {
 
     // Check if we need to seed exercises
     final cacheStale = await _exercisesDao.isCacheStale();
-    if (!force && !cacheStale) {
+    final prefs = await SharedPreferences.getInstance();
+    final seedCompleted = prefs.getBool(_seedDoneKey) ?? false;
+    if (!force && seedCompleted && !cacheStale) {
       debugPrint('[SyncService] exercise cache is fresh — skipping seed');
       await _seedTemplatesIfNeeded(force: false);
       return;
@@ -128,6 +148,12 @@ class SyncService {
   /// Pushes all pending sessions and their sets to the server.
   /// Safe to call multiple times — uses syncStatus to avoid double-posting.
   Future<void> syncPendingSessions() async {
+    await _syncPendingWorkoutData();
+    await _syncPendingWorkoutShares();
+  }
+
+  /// Session + set upload only (no feed share queue).
+  Future<void> _syncPendingWorkoutData() async {
     final isOnline = await checkIsOnline();
     if (!isOnline) {
       debugPrint('[SyncService] offline — skipping sync');
@@ -152,38 +178,48 @@ class SyncService {
     await _sessionsDao.markSyncing(session.localId);
 
     try {
-      final startedAt =
-          DateTime.fromMillisecondsSinceEpoch(session.startedAt).toUtc().toIso8601String();
+      var serverId = session.serverId;
 
-      // 1. Create the session on the server with client-recorded start time
-      final response = await _apiClient.post('/workouts/sessions', data: {
-        'notes': session.notes,
-        'startedAt': startedAt,
-      });
-
-      final serverData = response.data as Map<String, dynamic>;
-      final serverId = serverData['id'] as String;
-
-      // 2. If the session has ended, close it on the server with client time
-      if (session.endedAt != null) {
-        final endedAt = DateTime.fromMillisecondsSinceEpoch(session.endedAt!)
-            .toUtc()
-            .toIso8601String();
-        await _apiClient.patch('/workouts/sessions/$serverId', data: {
-          'ended': true,
-          'endedAt': endedAt,
-        });
+      // A session may already exist remotely while newly logged sets are
+      // still pending. Reuse its ID instead of creating a duplicate session.
+      if (serverId == null) {
+        final startedAt = DateTime.fromMillisecondsSinceEpoch(
+          session.startedAt,
+        ).toUtc().toIso8601String();
+        final response = await _apiClient.post(
+          '/workouts/sessions',
+          data: {
+            'notes': session.notes,
+            'startedAt': startedAt,
+            if (session.templateId != null) 'templateId': session.templateId,
+          },
+        );
+        final serverData = response.data as Map<String, dynamic>;
+        serverId = serverData['id'] as String;
       }
 
-      // 3. Update local row with server ID
+      // Always push endedAt when the local session is finished so share
+      // cannot race ahead of a session that only exists as "in progress"
+      // on the server.
+      if (session.endedAt != null) {
+        final endedAt = DateTime.fromMillisecondsSinceEpoch(
+          session.endedAt!,
+        ).toUtc().toIso8601String();
+        await _apiClient.patch(
+          '/workouts/sessions/$serverId',
+          data: {'ended': true, 'endedAt': endedAt},
+        );
+      }
+
+      // Update local row with server ID before uploading its sets.
       await _sessionsDao.markSessionSynced(session.localId, serverId);
 
-      // 4. Update all sets to know the server session ID
+      // Update all sets to know the server session ID.
       await _sessionsDao.updateSetsServerSessionId(session.localId, serverId);
 
       debugPrint('[SyncService] session ${session.localId} → server $serverId');
 
-      // 5. Sync all sets for this session
+      // Sync all sets for this session.
       await _syncSetsForSession(session.localId, serverId);
     } catch (e) {
       debugPrint('[SyncService] session sync failed: $e');
@@ -192,7 +228,9 @@ class SyncService {
   }
 
   Future<void> _syncSetsForSession(
-      String sessionLocalId, String sessionServerId) async {
+    String sessionLocalId,
+    String sessionServerId,
+  ) async {
     final sets = await _sessionsDao.getPendingSetsForSession(sessionLocalId);
 
     for (final set in sets) {
@@ -214,14 +252,80 @@ class SyncService {
 
         final resultData = response.data as Map<String, dynamic>;
         // Response may have { set: { id: ... }, isPr: bool }
-        final setData = resultData['set'] as Map<String, dynamic>?
-            ?? resultData;
+        final setData =
+            resultData['set'] as Map<String, dynamic>? ?? resultData;
         final serverId = setData['id'] as String;
 
         await _sessionsDao.markSetSynced(set.localId, serverId);
       } catch (e) {
         debugPrint('[SyncService] set ${set.localId} sync failed: $e');
         // Don't fail the whole session for one bad set
+      }
+    }
+  }
+
+  /// Syncs the session (and its sets) until the server copy is ready to share.
+  /// Returns the server session id, or null when offline / still pending.
+  Future<String?> ensureSessionReadyForShare(String sessionId) async {
+    if (!await checkIsOnline()) return null;
+
+    final localId = await _sessionsDao.resolveLocalId(sessionId);
+    if (localId == null) return null;
+
+    for (var attempt = 0; attempt < 10; attempt++) {
+      await _syncPendingWorkoutData();
+
+      final session = await _sessionsDao.getSessionByLocalId(localId);
+      if (session?.serverId != null &&
+          session!.endedAt != null &&
+          session.syncStatus == 'synced') {
+        final pendingSets =
+            await _sessionsDao.getPendingSetsForSession(localId);
+        if (pendingSets.isEmpty) {
+          return session.serverId;
+        }
+      }
+
+      if (attempt < 9) {
+        await Future<void>.delayed(const Duration(milliseconds: 750));
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _syncPendingWorkoutShares() async {
+    final isOnline = await checkIsOnline();
+    if (!isOnline) return;
+
+    final queue = PendingWorkoutShareQueue(_db);
+    final entries = await queue.list();
+
+    for (final entry in entries) {
+      final localId = await _sessionsDao.resolveLocalId(entry.sessionId);
+      if (localId == null) {
+        await queue.remove(entry.id);
+        continue;
+      }
+
+      final serverId = await ensureSessionReadyForShare(entry.sessionId);
+      if (serverId == null) {
+        continue;
+      }
+
+      try {
+        await _apiClient.post(
+          '/social/workout-sessions/$serverId/share',
+          data: {
+            if (entry.content?.trim().isNotEmpty == true)
+              'content': entry.content!.trim(),
+            if (entry.imagePath != null) 'imagePath': entry.imagePath,
+          },
+        );
+        await queue.remove(entry.id);
+        debugPrint('[SyncService] shared workout ${entry.sessionId} to feed');
+      } catch (e) {
+        debugPrint('[SyncService] workout share ${entry.sessionId} failed: $e');
       }
     }
   }

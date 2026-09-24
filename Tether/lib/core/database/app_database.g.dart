@@ -1539,6 +1539,17 @@ class $PendingSessionsTable extends PendingSessions
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _templateIdMeta = const VerificationMeta(
+    'templateId',
+  );
+  @override
+  late final GeneratedColumn<String> templateId = GeneratedColumn<String>(
+    'template_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _startedAtMeta = const VerificationMeta(
     'startedAt',
   );
@@ -1622,6 +1633,7 @@ class $PendingSessionsTable extends PendingSessions
     serverId,
     gymId,
     userId,
+    templateId,
     startedAt,
     endedAt,
     notes,
@@ -1671,6 +1683,12 @@ class $PendingSessionsTable extends PendingSessions
       );
     } else if (isInserting) {
       context.missing(_userIdMeta);
+    }
+    if (data.containsKey('template_id')) {
+      context.handle(
+        _templateIdMeta,
+        templateId.isAcceptableOrUnknown(data['template_id']!, _templateIdMeta),
+      );
     }
     if (data.containsKey('started_at')) {
       context.handle(
@@ -1743,6 +1761,10 @@ class $PendingSessionsTable extends PendingSessions
         DriftSqlType.string,
         data['${effectivePrefix}user_id'],
       )!,
+      templateId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}template_id'],
+      ),
       startedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}started_at'],
@@ -1785,6 +1807,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
   final String? serverId;
   final String gymId;
   final String userId;
+  final String? templateId;
   final int startedAt;
   final int? endedAt;
   final String? notes;
@@ -1797,6 +1820,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
     this.serverId,
     required this.gymId,
     required this.userId,
+    this.templateId,
     required this.startedAt,
     this.endedAt,
     this.notes,
@@ -1814,6 +1838,9 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
     }
     map['gym_id'] = Variable<String>(gymId);
     map['user_id'] = Variable<String>(userId);
+    if (!nullToAbsent || templateId != null) {
+      map['template_id'] = Variable<String>(templateId);
+    }
     map['started_at'] = Variable<int>(startedAt);
     if (!nullToAbsent || endedAt != null) {
       map['ended_at'] = Variable<int>(endedAt);
@@ -1838,6 +1865,9 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
           : Value(serverId),
       gymId: Value(gymId),
       userId: Value(userId),
+      templateId: templateId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(templateId),
       startedAt: Value(startedAt),
       endedAt: endedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1864,6 +1894,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
       serverId: serializer.fromJson<String?>(json['serverId']),
       gymId: serializer.fromJson<String>(json['gymId']),
       userId: serializer.fromJson<String>(json['userId']),
+      templateId: serializer.fromJson<String?>(json['templateId']),
       startedAt: serializer.fromJson<int>(json['startedAt']),
       endedAt: serializer.fromJson<int?>(json['endedAt']),
       notes: serializer.fromJson<String?>(json['notes']),
@@ -1881,6 +1912,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
       'serverId': serializer.toJson<String?>(serverId),
       'gymId': serializer.toJson<String>(gymId),
       'userId': serializer.toJson<String>(userId),
+      'templateId': serializer.toJson<String?>(templateId),
       'startedAt': serializer.toJson<int>(startedAt),
       'endedAt': serializer.toJson<int?>(endedAt),
       'notes': serializer.toJson<String?>(notes),
@@ -1896,6 +1928,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
     Value<String?> serverId = const Value.absent(),
     String? gymId,
     String? userId,
+    Value<String?> templateId = const Value.absent(),
     int? startedAt,
     Value<int?> endedAt = const Value.absent(),
     Value<String?> notes = const Value.absent(),
@@ -1908,6 +1941,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
     serverId: serverId.present ? serverId.value : this.serverId,
     gymId: gymId ?? this.gymId,
     userId: userId ?? this.userId,
+    templateId: templateId.present ? templateId.value : this.templateId,
     startedAt: startedAt ?? this.startedAt,
     endedAt: endedAt.present ? endedAt.value : this.endedAt,
     notes: notes.present ? notes.value : this.notes,
@@ -1922,6 +1956,9 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
       serverId: data.serverId.present ? data.serverId.value : this.serverId,
       gymId: data.gymId.present ? data.gymId.value : this.gymId,
       userId: data.userId.present ? data.userId.value : this.userId,
+      templateId: data.templateId.present
+          ? data.templateId.value
+          : this.templateId,
       startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
       endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
       notes: data.notes.present ? data.notes.value : this.notes,
@@ -1943,6 +1980,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
           ..write('serverId: $serverId, ')
           ..write('gymId: $gymId, ')
           ..write('userId: $userId, ')
+          ..write('templateId: $templateId, ')
           ..write('startedAt: $startedAt, ')
           ..write('endedAt: $endedAt, ')
           ..write('notes: $notes, ')
@@ -1960,6 +1998,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
     serverId,
     gymId,
     userId,
+    templateId,
     startedAt,
     endedAt,
     notes,
@@ -1976,6 +2015,7 @@ class PendingSession extends DataClass implements Insertable<PendingSession> {
           other.serverId == this.serverId &&
           other.gymId == this.gymId &&
           other.userId == this.userId &&
+          other.templateId == this.templateId &&
           other.startedAt == this.startedAt &&
           other.endedAt == this.endedAt &&
           other.notes == this.notes &&
@@ -1990,6 +2030,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
   final Value<String?> serverId;
   final Value<String> gymId;
   final Value<String> userId;
+  final Value<String?> templateId;
   final Value<int> startedAt;
   final Value<int?> endedAt;
   final Value<String?> notes;
@@ -2003,6 +2044,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
     this.serverId = const Value.absent(),
     this.gymId = const Value.absent(),
     this.userId = const Value.absent(),
+    this.templateId = const Value.absent(),
     this.startedAt = const Value.absent(),
     this.endedAt = const Value.absent(),
     this.notes = const Value.absent(),
@@ -2017,6 +2059,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
     this.serverId = const Value.absent(),
     required String gymId,
     required String userId,
+    this.templateId = const Value.absent(),
     required int startedAt,
     this.endedAt = const Value.absent(),
     this.notes = const Value.absent(),
@@ -2035,6 +2078,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
     Expression<String>? serverId,
     Expression<String>? gymId,
     Expression<String>? userId,
+    Expression<String>? templateId,
     Expression<int>? startedAt,
     Expression<int>? endedAt,
     Expression<String>? notes,
@@ -2049,6 +2093,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
       if (serverId != null) 'server_id': serverId,
       if (gymId != null) 'gym_id': gymId,
       if (userId != null) 'user_id': userId,
+      if (templateId != null) 'template_id': templateId,
       if (startedAt != null) 'started_at': startedAt,
       if (endedAt != null) 'ended_at': endedAt,
       if (notes != null) 'notes': notes,
@@ -2065,6 +2110,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
     Value<String?>? serverId,
     Value<String>? gymId,
     Value<String>? userId,
+    Value<String?>? templateId,
     Value<int>? startedAt,
     Value<int?>? endedAt,
     Value<String?>? notes,
@@ -2079,6 +2125,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
       serverId: serverId ?? this.serverId,
       gymId: gymId ?? this.gymId,
       userId: userId ?? this.userId,
+      templateId: templateId ?? this.templateId,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
       notes: notes ?? this.notes,
@@ -2104,6 +2151,9 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
     }
     if (userId.present) {
       map['user_id'] = Variable<String>(userId.value);
+    }
+    if (templateId.present) {
+      map['template_id'] = Variable<String>(templateId.value);
     }
     if (startedAt.present) {
       map['started_at'] = Variable<int>(startedAt.value);
@@ -2139,6 +2189,7 @@ class PendingSessionsCompanion extends UpdateCompanion<PendingSession> {
           ..write('serverId: $serverId, ')
           ..write('gymId: $gymId, ')
           ..write('userId: $userId, ')
+          ..write('templateId: $templateId, ')
           ..write('startedAt: $startedAt, ')
           ..write('endedAt: $endedAt, ')
           ..write('notes: $notes, ')
@@ -3073,6 +3124,371 @@ class PendingSetsCompanion extends UpdateCompanion<PendingSet> {
   }
 }
 
+class $QueuedWorkoutSharesTable extends QueuedWorkoutShares
+    with TableInfo<$QueuedWorkoutSharesTable, QueuedWorkoutShare> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $QueuedWorkoutSharesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _imagePathMeta = const VerificationMeta(
+    'imagePath',
+  );
+  @override
+  late final GeneratedColumn<String> imagePath = GeneratedColumn<String>(
+    'image_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sessionId,
+    content,
+    imagePath,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'queued_workout_shares';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<QueuedWorkoutShare> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    }
+    if (data.containsKey('image_path')) {
+      context.handle(
+        _imagePathMeta,
+        imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  QueuedWorkoutShare map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return QueuedWorkoutShare(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      ),
+      imagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_path'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $QueuedWorkoutSharesTable createAlias(String alias) {
+    return $QueuedWorkoutSharesTable(attachedDatabase, alias);
+  }
+}
+
+class QueuedWorkoutShare extends DataClass
+    implements Insertable<QueuedWorkoutShare> {
+  final String id;
+  final String sessionId;
+  final String? content;
+  final String? imagePath;
+  final int createdAt;
+  const QueuedWorkoutShare({
+    required this.id,
+    required this.sessionId,
+    this.content,
+    this.imagePath,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['session_id'] = Variable<String>(sessionId);
+    if (!nullToAbsent || content != null) {
+      map['content'] = Variable<String>(content);
+    }
+    if (!nullToAbsent || imagePath != null) {
+      map['image_path'] = Variable<String>(imagePath);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  QueuedWorkoutSharesCompanion toCompanion(bool nullToAbsent) {
+    return QueuedWorkoutSharesCompanion(
+      id: Value(id),
+      sessionId: Value(sessionId),
+      content: content == null && nullToAbsent
+          ? const Value.absent()
+          : Value(content),
+      imagePath: imagePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imagePath),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory QueuedWorkoutShare.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return QueuedWorkoutShare(
+      id: serializer.fromJson<String>(json['id']),
+      sessionId: serializer.fromJson<String>(json['sessionId']),
+      content: serializer.fromJson<String?>(json['content']),
+      imagePath: serializer.fromJson<String?>(json['imagePath']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sessionId': serializer.toJson<String>(sessionId),
+      'content': serializer.toJson<String?>(content),
+      'imagePath': serializer.toJson<String?>(imagePath),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  QueuedWorkoutShare copyWith({
+    String? id,
+    String? sessionId,
+    Value<String?> content = const Value.absent(),
+    Value<String?> imagePath = const Value.absent(),
+    int? createdAt,
+  }) => QueuedWorkoutShare(
+    id: id ?? this.id,
+    sessionId: sessionId ?? this.sessionId,
+    content: content.present ? content.value : this.content,
+    imagePath: imagePath.present ? imagePath.value : this.imagePath,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  QueuedWorkoutShare copyWithCompanion(QueuedWorkoutSharesCompanion data) {
+    return QueuedWorkoutShare(
+      id: data.id.present ? data.id.value : this.id,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      content: data.content.present ? data.content.value : this.content,
+      imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QueuedWorkoutShare(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('content: $content, ')
+          ..write('imagePath: $imagePath, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, sessionId, content, imagePath, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is QueuedWorkoutShare &&
+          other.id == this.id &&
+          other.sessionId == this.sessionId &&
+          other.content == this.content &&
+          other.imagePath == this.imagePath &&
+          other.createdAt == this.createdAt);
+}
+
+class QueuedWorkoutSharesCompanion extends UpdateCompanion<QueuedWorkoutShare> {
+  final Value<String> id;
+  final Value<String> sessionId;
+  final Value<String?> content;
+  final Value<String?> imagePath;
+  final Value<int> createdAt;
+  final Value<int> rowid;
+  const QueuedWorkoutSharesCompanion({
+    this.id = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.content = const Value.absent(),
+    this.imagePath = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  QueuedWorkoutSharesCompanion.insert({
+    required String id,
+    required String sessionId,
+    this.content = const Value.absent(),
+    this.imagePath = const Value.absent(),
+    required int createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sessionId = Value(sessionId),
+       createdAt = Value(createdAt);
+  static Insertable<QueuedWorkoutShare> custom({
+    Expression<String>? id,
+    Expression<String>? sessionId,
+    Expression<String>? content,
+    Expression<String>? imagePath,
+    Expression<int>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sessionId != null) 'session_id': sessionId,
+      if (content != null) 'content': content,
+      if (imagePath != null) 'image_path': imagePath,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  QueuedWorkoutSharesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sessionId,
+    Value<String?>? content,
+    Value<String?>? imagePath,
+    Value<int>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return QueuedWorkoutSharesCompanion(
+      id: id ?? this.id,
+      sessionId: sessionId ?? this.sessionId,
+      content: content ?? this.content,
+      imagePath: imagePath ?? this.imagePath,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (imagePath.present) {
+      map['image_path'] = Variable<String>(imagePath.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QueuedWorkoutSharesCompanion(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('content: $content, ')
+          ..write('imagePath: $imagePath, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $RecentlyUsedCacheTable extends RecentlyUsedCache
     with TableInfo<$RecentlyUsedCacheTable, RecentlyUsedCacheData> {
   @override
@@ -3396,6 +3812,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $PendingSetsTable pendingSets = $PendingSetsTable(this);
+  late final $QueuedWorkoutSharesTable queuedWorkoutShares =
+      $QueuedWorkoutSharesTable(this);
   late final $RecentlyUsedCacheTable recentlyUsedCache =
       $RecentlyUsedCacheTable(this);
   late final ExercisesDao exercisesDao = ExercisesDao(this as AppDatabase);
@@ -3410,6 +3828,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     workoutTemplatesCache,
     pendingSessions,
     pendingSets,
+    queuedWorkoutShares,
     recentlyUsedCache,
   ];
 }
@@ -4148,6 +4567,7 @@ typedef $$PendingSessionsTableCreateCompanionBuilder =
       Value<String?> serverId,
       required String gymId,
       required String userId,
+      Value<String?> templateId,
       required int startedAt,
       Value<int?> endedAt,
       Value<String?> notes,
@@ -4163,6 +4583,7 @@ typedef $$PendingSessionsTableUpdateCompanionBuilder =
       Value<String?> serverId,
       Value<String> gymId,
       Value<String> userId,
+      Value<String?> templateId,
       Value<int> startedAt,
       Value<int?> endedAt,
       Value<String?> notes,
@@ -4199,6 +4620,11 @@ class $$PendingSessionsTableFilterComposer
 
   ColumnFilters<String> get userId => $composableBuilder(
     column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get templateId => $composableBuilder(
+    column: $table.templateId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4267,6 +4693,11 @@ class $$PendingSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get templateId => $composableBuilder(
+    column: $table.templateId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get startedAt => $composableBuilder(
     column: $table.startedAt,
     builder: (column) => ColumnOrderings(column),
@@ -4323,6 +4754,11 @@ class $$PendingSessionsTableAnnotationComposer
 
   GeneratedColumn<String> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get templateId => $composableBuilder(
+    column: $table.templateId,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get startedAt =>
       $composableBuilder(column: $table.startedAt, builder: (column) => column);
@@ -4391,6 +4827,7 @@ class $$PendingSessionsTableTableManager
                 Value<String?> serverId = const Value.absent(),
                 Value<String> gymId = const Value.absent(),
                 Value<String> userId = const Value.absent(),
+                Value<String?> templateId = const Value.absent(),
                 Value<int> startedAt = const Value.absent(),
                 Value<int?> endedAt = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -4404,6 +4841,7 @@ class $$PendingSessionsTableTableManager
                 serverId: serverId,
                 gymId: gymId,
                 userId: userId,
+                templateId: templateId,
                 startedAt: startedAt,
                 endedAt: endedAt,
                 notes: notes,
@@ -4419,6 +4857,7 @@ class $$PendingSessionsTableTableManager
                 Value<String?> serverId = const Value.absent(),
                 required String gymId,
                 required String userId,
+                Value<String?> templateId = const Value.absent(),
                 required int startedAt,
                 Value<int?> endedAt = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -4432,6 +4871,7 @@ class $$PendingSessionsTableTableManager
                 serverId: serverId,
                 gymId: gymId,
                 userId: userId,
+                templateId: templateId,
                 startedAt: startedAt,
                 endedAt: endedAt,
                 notes: notes,
@@ -4885,6 +5325,222 @@ typedef $$PendingSetsTableProcessedTableManager =
       PendingSet,
       PrefetchHooks Function()
     >;
+typedef $$QueuedWorkoutSharesTableCreateCompanionBuilder =
+    QueuedWorkoutSharesCompanion Function({
+      required String id,
+      required String sessionId,
+      Value<String?> content,
+      Value<String?> imagePath,
+      required int createdAt,
+      Value<int> rowid,
+    });
+typedef $$QueuedWorkoutSharesTableUpdateCompanionBuilder =
+    QueuedWorkoutSharesCompanion Function({
+      Value<String> id,
+      Value<String> sessionId,
+      Value<String?> content,
+      Value<String?> imagePath,
+      Value<int> createdAt,
+      Value<int> rowid,
+    });
+
+class $$QueuedWorkoutSharesTableFilterComposer
+    extends Composer<_$AppDatabase, $QueuedWorkoutSharesTable> {
+  $$QueuedWorkoutSharesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$QueuedWorkoutSharesTableOrderingComposer
+    extends Composer<_$AppDatabase, $QueuedWorkoutSharesTable> {
+  $$QueuedWorkoutSharesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$QueuedWorkoutSharesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $QueuedWorkoutSharesTable> {
+  $$QueuedWorkoutSharesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get imagePath =>
+      $composableBuilder(column: $table.imagePath, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$QueuedWorkoutSharesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $QueuedWorkoutSharesTable,
+          QueuedWorkoutShare,
+          $$QueuedWorkoutSharesTableFilterComposer,
+          $$QueuedWorkoutSharesTableOrderingComposer,
+          $$QueuedWorkoutSharesTableAnnotationComposer,
+          $$QueuedWorkoutSharesTableCreateCompanionBuilder,
+          $$QueuedWorkoutSharesTableUpdateCompanionBuilder,
+          (
+            QueuedWorkoutShare,
+            BaseReferences<
+              _$AppDatabase,
+              $QueuedWorkoutSharesTable,
+              QueuedWorkoutShare
+            >,
+          ),
+          QueuedWorkoutShare,
+          PrefetchHooks Function()
+        > {
+  $$QueuedWorkoutSharesTableTableManager(
+    _$AppDatabase db,
+    $QueuedWorkoutSharesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$QueuedWorkoutSharesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$QueuedWorkoutSharesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$QueuedWorkoutSharesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sessionId = const Value.absent(),
+                Value<String?> content = const Value.absent(),
+                Value<String?> imagePath = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => QueuedWorkoutSharesCompanion(
+                id: id,
+                sessionId: sessionId,
+                content: content,
+                imagePath: imagePath,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sessionId,
+                Value<String?> content = const Value.absent(),
+                Value<String?> imagePath = const Value.absent(),
+                required int createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => QueuedWorkoutSharesCompanion.insert(
+                id: id,
+                sessionId: sessionId,
+                content: content,
+                imagePath: imagePath,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$QueuedWorkoutSharesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $QueuedWorkoutSharesTable,
+      QueuedWorkoutShare,
+      $$QueuedWorkoutSharesTableFilterComposer,
+      $$QueuedWorkoutSharesTableOrderingComposer,
+      $$QueuedWorkoutSharesTableAnnotationComposer,
+      $$QueuedWorkoutSharesTableCreateCompanionBuilder,
+      $$QueuedWorkoutSharesTableUpdateCompanionBuilder,
+      (
+        QueuedWorkoutShare,
+        BaseReferences<
+          _$AppDatabase,
+          $QueuedWorkoutSharesTable,
+          QueuedWorkoutShare
+        >,
+      ),
+      QueuedWorkoutShare,
+      PrefetchHooks Function()
+    >;
 typedef $$RecentlyUsedCacheTableCreateCompanionBuilder =
     RecentlyUsedCacheCompanion Function({
       required String exerciseId,
@@ -5093,6 +5749,8 @@ class $AppDatabaseManager {
       $$PendingSessionsTableTableManager(_db, _db.pendingSessions);
   $$PendingSetsTableTableManager get pendingSets =>
       $$PendingSetsTableTableManager(_db, _db.pendingSets);
+  $$QueuedWorkoutSharesTableTableManager get queuedWorkoutShares =>
+      $$QueuedWorkoutSharesTableTableManager(_db, _db.queuedWorkoutShares);
   $$RecentlyUsedCacheTableTableManager get recentlyUsedCache =>
       $$RecentlyUsedCacheTableTableManager(_db, _db.recentlyUsedCache);
 }

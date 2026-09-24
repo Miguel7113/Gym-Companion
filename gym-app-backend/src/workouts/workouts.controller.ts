@@ -16,7 +16,12 @@ import { CurrentMember } from '../auth/decorators/current-user.decorator';
 import { CreateExerciseDto } from './dto/create-exercise.dto';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
-import { CreateSetDto, UpdateUserProfileDto } from './dto/workouts.dto';
+import {
+  CreateRoutineDto,
+  CreateSetDto,
+  UpdateRoutineDto,
+  UpdateUserProfileDto,
+} from './dto/workouts.dto';
 
 @Controller()
 @UseGuards(SupabaseAuthGuard)
@@ -65,6 +70,137 @@ export class WorkoutsController {
   @Get('exercises/:id')
   getExercise(@Param('id') id: string) {
     return this.workoutsService.getExercise(id);
+  }
+
+  // ─── Personal routines ────────────────────────────────────────────────────
+
+  @Get('workouts/routines')
+  listRoutines(
+    @CurrentMember() member: { userId: string; gymId: string },
+  ) {
+    return this.workoutsService.listRoutines(member.userId, member.gymId);
+  }
+
+  @Get('workouts/routines/:id')
+  getRoutine(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Param('id') id: string,
+  ) {
+    return this.workoutsService.getRoutine(member.userId, member.gymId, id);
+  }
+
+  @Get('workouts/routines/:id/history')
+  getRoutineHistory(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Param('id') id: string,
+  ) {
+    return this.workoutsService.getRoutineHistory(
+      member.userId,
+      member.gymId,
+      id,
+    );
+  }
+
+  @Get('workouts/routines/:id/leaderboard')
+  getRoutineLeaderboard(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Param('id') id: string,
+    @Query('exerciseId') exerciseId: string,
+    @Query('metric') metric?: string,
+  ) {
+    return this.workoutsService.getRoutineLeaderboard(
+      member.userId,
+      member.gymId,
+      id,
+      exerciseId,
+      metric ?? 'volume',
+    );
+  }
+
+  @Post('workouts/routines')
+  createRoutine(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Body() dto: CreateRoutineDto,
+  ) {
+    return this.workoutsService.createRoutine(
+      member.userId,
+      member.gymId,
+      dto,
+    );
+  }
+
+  @Patch('workouts/routines/:id')
+  updateRoutine(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateRoutineDto,
+  ) {
+    return this.workoutsService.updateRoutine(
+      member.userId,
+      member.gymId,
+      id,
+      dto,
+    );
+  }
+
+  @Delete('workouts/routines/:id')
+  deleteRoutine(
+    @CurrentMember() member: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.workoutsService.deleteRoutine(member.userId, id);
+  }
+
+  @Post('workouts/routines/:id/copy')
+  copyRoutine(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Param('id') id: string,
+  ) {
+    return this.workoutsService.copyRoutine(member.userId, member.gymId, id);
+  }
+
+  @Get('workouts/programs')
+  listGymPrograms(
+    @CurrentMember() member: { gymId: string },
+    @Query('coachUserId') coachUserId?: string,
+  ) {
+    return this.workoutsService.listGymPrograms(member.gymId, coachUserId);
+  }
+
+  @Post('workouts/routines/:id/publish')
+  publishRoutine(
+    @CurrentMember()
+    member: {
+      userId: string;
+      gymId: string;
+      isStaff: boolean;
+    },
+    @Param('id') id: string,
+  ) {
+    return this.workoutsService.publishRoutine(
+      member.userId,
+      member.gymId,
+      id,
+      member.isStaff,
+    );
+  }
+
+  @Post('workouts/routines/:id/unpublish')
+  unpublishRoutine(
+    @CurrentMember()
+    member: {
+      userId: string;
+      gymId: string;
+      isStaff: boolean;
+    },
+    @Param('id') id: string,
+  ) {
+    return this.workoutsService.unpublishRoutine(
+      member.userId,
+      member.gymId,
+      id,
+      member.isStaff,
+    );
   }
 
   @Post('exercises')
@@ -164,6 +300,19 @@ export class WorkoutsController {
     @Body() dto: CreateSessionDto,
   ) {
     return this.workoutsService.createSession(member.userId, member.gymId, dto);
+  }
+
+  @Post('workouts/sessions/buddy')
+  createBuddySession(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Body() body: { buddyUserId: string; templateId?: string },
+  ) {
+    return this.workoutsService.createBuddySession(
+      member.userId,
+      member.gymId,
+      body.buddyUserId,
+      body.templateId,
+    );
   }
 
   @Patch('workouts/sessions/:id')

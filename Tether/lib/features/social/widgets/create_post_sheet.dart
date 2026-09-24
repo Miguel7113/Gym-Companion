@@ -82,7 +82,7 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
       height: 460 + keyboardPad,
       decoration: const BoxDecoration(
         color: AppTheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXxl)),
       ),
       padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad + 16),
       child: Column(
@@ -100,8 +100,10 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
           ),
           Row(
             children: [
-              Expanded(child: Text('POST ANNOUNCEMENT',
-                style: Theme.of(context).textTheme.labelLarge)),
+              Expanded(child: Text('Post announcement',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ))),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: const Icon(Symbols.close, size: 18,

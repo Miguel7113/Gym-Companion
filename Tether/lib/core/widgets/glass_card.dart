@@ -5,7 +5,7 @@ import '../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GlassCard
-// Semi-transparent container with backdrop blur and subtle border.
+// Soft elevated panel with optional backdrop blur.
 // Used for social post cards, stat tiles, announcement tiles, settings panels.
 // ─────────────────────────────────────────────────────────────────────────────
 class GlassCard extends StatelessWidget {
@@ -20,6 +20,7 @@ class GlassCard extends StatelessWidget {
   final double opacity;
   final double? borderRadius;
   final bool showBorder;
+  final bool elevated;
 
   const GlassCard({
     super.key,
@@ -31,9 +32,10 @@ class GlassCard extends StatelessWidget {
     this.onTap,
     this.color,
     this.blurAmount = 16.0,
-    this.opacity = 0.6,
+    this.opacity = 0.92,
     this.borderRadius,
     this.showBorder = true,
+    this.elevated = false,
   });
 
   @override
@@ -46,11 +48,12 @@ class GlassCard extends StatelessWidget {
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: (color ?? AppTheme.surface).withOpacity(opacity),
+        color: (color ?? AppTheme.surfaceContainer).withOpacity(opacity),
         borderRadius: BorderRadius.circular(radius),
         border: showBorder
-            ? Border.all(color: Colors.white.withOpacity(0.1), width: 1)
+            ? Border.all(color: Colors.white.withOpacity(0.08), width: 1)
             : null,
+        boxShadow: elevated ? AppTheme.cardElevation : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
@@ -73,7 +76,7 @@ class GlassCard extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PrimaryButton
-// Solid lime pill with neon glow and scale-down press feedback.
+// Solid teal pill with soft glow and scale-down press feedback.
 // ─────────────────────────────────────────────────────────────────────────────
 class PrimaryButton extends StatefulWidget {
   final String label;
@@ -125,14 +128,17 @@ class _PrimaryButtonState extends State<PrimaryButton>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final enabled = widget.onPressed != null && !widget.isLoading;
 
     return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapUp: (_) {
-        _controller.reverse();
-        widget.onPressed?.call();
-      },
-      onTapCancel: () => _controller.reverse(),
+      onTapDown: enabled ? (_) => _controller.forward() : null,
+      onTapUp: enabled
+          ? (_) {
+              _controller.reverse();
+              widget.onPressed?.call();
+            }
+          : null,
+      onTapCancel: enabled ? () => _controller.reverse() : null,
       child: AnimatedBuilder(
         animation: _scale,
         builder: (context, child) => Transform.scale(
@@ -143,9 +149,12 @@ class _PrimaryButtonState extends State<PrimaryButton>
           width: widget.width ?? double.infinity,
           height: widget.height,
           decoration: BoxDecoration(
-            color: AppTheme.primaryContainer,
+            color: enabled
+                ? AppTheme.primaryContainer
+                : AppTheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-            boxShadow: AppTheme.neonGlow(opacity: 0.25, blur: 20),
+            boxShadow:
+                enabled ? AppTheme.neonGlow(opacity: 0.28, blur: 22) : null,
           ),
           child: Center(
             child: widget.isLoading
@@ -163,17 +172,24 @@ class _PrimaryButtonState extends State<PrimaryButton>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (widget.icon != null) ...[
-                        Icon(widget.icon,
-                            size: 18, color: AppTheme.onPrimaryFixed),
+                        Icon(
+                          widget.icon,
+                          size: 18,
+                          color: enabled
+                              ? AppTheme.onPrimaryFixed
+                              : AppTheme.onSurfaceVariant,
+                        ),
                         const SizedBox(width: 8),
                       ],
                       Text(
-                        widget.label.toUpperCase(),
-                        style: theme.textTheme.headlineMedium?.copyWith(
+                        widget.label,
+                        style: theme.textTheme.headlineSmall?.copyWith(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.onPrimaryFixed,
-                          letterSpacing: 0.08 * 16,
+                          color: enabled
+                              ? AppTheme.onPrimaryFixed
+                              : AppTheme.onSurfaceVariant,
+                          letterSpacing: -0.2,
                         ),
                       ),
                     ],
@@ -187,11 +203,13 @@ class _PrimaryButtonState extends State<PrimaryButton>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SecondaryButton
-// Glass pill with white border and optional lime text.
+// Soft glass pill with optional accent text.
 // ─────────────────────────────────────────────────────────────────────────────
 class SecondaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
+  final bool useAccentText;
+  @Deprecated('Use useAccentText')
   final bool useLimeText;
   final IconData? icon;
   final double? width;
@@ -200,6 +218,7 @@ class SecondaryButton extends StatelessWidget {
     super.key,
     required this.label,
     this.onPressed,
+    this.useAccentText = false,
     this.useLimeText = false,
     this.icon,
     this.width,
@@ -208,8 +227,9 @@ class SecondaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = useAccentText || useLimeText;
     final textColor =
-        useLimeText ? AppTheme.primaryContainer : AppTheme.onSurface;
+        accent ? AppTheme.primaryContainer : AppTheme.onSurface;
 
     return GestureDetector(
       onTap: onPressed,
@@ -217,10 +237,10 @@ class SecondaryButton extends StatelessWidget {
         width: width ?? double.infinity,
         height: 52,
         decoration: BoxDecoration(
-          color: AppTheme.surfaceContainer.withOpacity(0.6),
+          color: AppTheme.surfaceContainerHigh.withOpacity(0.75),
           borderRadius: BorderRadius.circular(AppTheme.radiusFull),
           border: Border.all(
-            color: useLimeText
+            color: accent
                 ? AppTheme.primaryContainer.withOpacity(0.4)
                 : Colors.white.withOpacity(0.1),
             width: 1,
@@ -239,12 +259,12 @@ class SecondaryButton extends StatelessWidget {
                     const SizedBox(width: 8),
                   ],
                   Text(
-                    label.toUpperCase(),
-                    style: theme.textTheme.headlineMedium?.copyWith(
+                    label,
+                    style: theme.textTheme.headlineSmall?.copyWith(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: textColor,
-                      letterSpacing: 0.08 * 16,
+                      letterSpacing: -0.2,
                     ),
                   ),
                 ],
@@ -259,8 +279,7 @@ class SecondaryButton extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MetricChip / TagChip
-// Pill-shaped label. Selected = lime border + tinted bg + glow.
-// Unselected = dark fill + white/10 border.
+// Pill-shaped label. Selected = teal border + tinted bg + soft glow.
 // ─────────────────────────────────────────────────────────────────────────────
 class MetricChip extends StatelessWidget {
   final String label;
@@ -316,7 +335,7 @@ class MetricChip extends StatelessWidget {
               const SizedBox(width: 4),
             ],
             Text(
-              label.toUpperCase(),
+              label,
               style: theme.textTheme.labelLarge?.copyWith(color: textColor),
             ),
           ],
@@ -328,13 +347,7 @@ class MetricChip extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SkeletonBox
-//
 // Animated shimmer placeholder used while async data is loading.
-// Drop-in replacement for any fixed-size content area.
-//
-// Usage:
-//   SkeletonBox(width: double.infinity, height: 80)
-//   SkeletonBox(width: 120, height: 16, radius: AppTheme.radiusFull)
 // ─────────────────────────────────────────────────────────────────────────────
 class SkeletonBox extends StatefulWidget {
   final double width;
@@ -395,22 +408,11 @@ class _SkeletonBoxState extends State<SkeletonBox>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ConnectErrorState
-//
 // Standard full-screen error state for every fetch that can fail.
-// Shows a wifi-off icon, a fixed friendly message, and a Retry pill.
-// The actual exception is logged to console only — never rendered in the UI.
-//
-// Usage:
-//   ConnectErrorState(onRetry: _loadData)
-//
-// To log from the catch site before calling setState:
-//   debugPrint('[ScreenName] fetch failed: $e');
 // ─────────────────────────────────────────────────────────────────────────────
 class ConnectErrorState extends StatelessWidget {
   final VoidCallback onRetry;
 
-  /// Optional context string prepended to the console log (e.g. 'WorkoutsScreen').
-  /// Not displayed to the user.
   const ConnectErrorState({
     super.key,
     required this.onRetry,
@@ -418,55 +420,93 @@ class ConnectErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return EmptyState(
+      icon: Symbols.wifi_off,
+      title: "Can't connect right now",
+      message: 'Check your connection and try again',
+      actionLabel: 'Try again',
+      onAction: onRetry,
+      actionIcon: Symbols.refresh,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EmptyState
+// Friendly empty / error placeholder with icon badge, copy, and optional CTA.
+// ─────────────────────────────────────────────────────────────────────────────
+class EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final IconData? actionIcon;
+
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+    this.actionIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppTheme.stackLg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Icon
             Container(
-              width: 64,
-              height: 64,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 color: AppTheme.surfaceContainerHigh,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withOpacity(0.08),
                   width: 1,
                 ),
+                boxShadow: AppTheme.cardElevation,
               ),
               child: Icon(
-                Symbols.wifi_off,
-                size: 28,
-                color: AppTheme.onSurfaceVariant.withOpacity(0.6),
+                icon,
+                size: 30,
+                color: AppTheme.onSurfaceVariant.withOpacity(0.75),
               ),
             ),
             const SizedBox(height: AppTheme.stackMd),
-            // Friendly message — no raw exception text
             Text(
-              "Can't connect right now",
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: AppTheme.onSurface,
-                  ),
+              title,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: AppTheme.onSurface,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
-              'Check your connection and try again',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.onSurfaceVariant,
-                  ),
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: AppTheme.stackLg),
-            // Retry pill — matches SecondaryButton style but fixed width
-            SecondaryButton(
-              label: 'Try Again',
-              icon: Symbols.refresh,
-              onPressed: onRetry,
-              width: 160,
-            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: AppTheme.stackLg),
+              SecondaryButton(
+                label: actionLabel!,
+                icon: actionIcon,
+                onPressed: onAction,
+                width: 180,
+                useAccentText: true,
+              ),
+            ],
           ],
         ),
       ),
@@ -476,7 +516,7 @@ class ConnectErrorState extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // StatTile
-// Glass tile used in bento grids (workout complete, home stats).
+// Elevated tile used in bento grids (workout complete, home stats).
 // ─────────────────────────────────────────────────────────────────────────────
 class StatTile extends StatelessWidget {
   final String label;
@@ -498,6 +538,7 @@ class StatTile extends StatelessWidget {
     final accent = accentColor ?? AppTheme.primaryContainer;
 
     return GlassCard(
+      elevated: true,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -520,7 +561,7 @@ class StatTile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            label.toUpperCase(),
+            label,
             style: theme.textTheme.labelLarge?.copyWith(
               color: AppTheme.onSurfaceVariant,
             ),
@@ -534,18 +575,16 @@ class StatTile extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // TetherAppBar
 // Fixed glass top bar used across all main screens.
-// center: TETHER wordmark or screen title.
-// leading/trailing: optional icon buttons.
 // ─────────────────────────────────────────────────────────────────────────────
 class TetherAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
-  final bool showWordmark; // true = lime TETHER wordmark; false = plain title
+  final bool showWordmark;
   final Widget? leading;
   final List<Widget>? actions;
 
   const TetherAppBar({
     super.key,
-    this.title = 'TETHER',
+    this.title = 'Tether',
     this.showWordmark = true,
     this.leading,
     this.actions,
@@ -569,38 +608,35 @@ class TetherAppBar extends StatelessWidget implements PreferredSizeWidget {
             right: AppTheme.gutter,
           ),
           decoration: const BoxDecoration(
-            color: Color(0x99121317), // surface at ~60%
+            color: Color(0x99000000),
             border: Border(
               bottom: BorderSide(color: Color(0x1AFFFFFF), width: 1),
             ),
           ),
           child: Row(
             children: [
-              // Leading
               SizedBox(
                 width: 40,
                 child: leading,
               ),
-              // Center title
               Expanded(
                 child: Center(
                   child: showWordmark
                       ? Text(
-                          'TETHER',
+                          'Tether',
                           style: theme.textTheme.headlineLarge?.copyWith(
                             color: AppTheme.primaryContainer,
-                            letterSpacing: 0.05 * 28,
+                            letterSpacing: -0.4,
                           ),
                         )
                       : Text(
-                          title.toUpperCase(),
+                          title,
                           style: theme.textTheme.headlineLarge?.copyWith(
-                            letterSpacing: 0.05 * 28,
+                            letterSpacing: -0.4,
                           ),
                         ),
                 ),
               ),
-              // Trailing actions — right-aligned in a fixed-width slot
               SizedBox(
                 width: 40,
                 child: actions != null && actions!.isNotEmpty

@@ -81,6 +81,127 @@ class WorkoutService {
     await _apiClient.delete('/workouts/saved/programs/$templateId');
   }
 
+  // ─── Personal routines ────────────────────────────────────────────────────
+
+  Future<List<WorkoutTemplate>> listRoutines() async {
+    final response = await _apiClient.get('/workouts/routines');
+    return (response.data as List)
+        .map((j) => WorkoutTemplate.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<WorkoutTemplate> createRoutine({
+    required String name,
+    required List<WorkoutTemplateExercise> exercises,
+    String? description,
+    String? category,
+    String? difficulty,
+    int? durationMins,
+    bool isShared = false,
+  }) async {
+    final response = await _apiClient.post(
+      '/workouts/routines',
+      data: {
+        'name': name,
+        if (description != null) 'description': description,
+        if (category != null) 'category': category,
+        if (difficulty != null) 'difficulty': difficulty,
+        if (durationMins != null) 'durationMins': durationMins,
+        'isShared': isShared,
+        'exercises': exercises.map((exercise) => {
+          'exerciseId': exercise.exerciseId,
+          'sortOrder': exercise.sortOrder,
+          if (exercise.defaultSets != null)
+            'defaultSets': exercise.defaultSets,
+          if (exercise.defaultReps != null)
+            'defaultReps': exercise.defaultReps,
+          if (exercise.defaultWeightKg != null)
+            'defaultWeightKg': exercise.defaultWeightKg,
+          if (exercise.defaultDurationSecs != null)
+            'defaultDurationSecs': exercise.defaultDurationSecs,
+          if (exercise.defaultDistanceM != null)
+            'defaultDistanceM': exercise.defaultDistanceM,
+          if (exercise.notes != null) 'notes': exercise.notes,
+        }).toList(),
+      },
+    );
+    return WorkoutTemplate.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<WorkoutTemplate> copyRoutine(String routineId) async {
+    final response = await _apiClient.post('/workouts/routines/$routineId/copy');
+    return WorkoutTemplate.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<WorkoutTemplate> getRoutine(String routineId) async {
+    final response = await _apiClient.get('/workouts/routines/$routineId');
+    return WorkoutTemplate.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<List<WorkoutSession>> getRoutineHistory(String routineId) async {
+    final response = await _apiClient.get(
+      '/workouts/routines/$routineId/history',
+    );
+    return (response.data as List)
+        .map((json) => WorkoutSession.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<RoutineLeaderboard> getRoutineLeaderboard({
+    required String routineId,
+    required String exerciseId,
+    String metric = 'volume',
+  }) async {
+    final response = await _apiClient.get(
+      '/workouts/routines/$routineId/leaderboard',
+      queryParameters: {'exerciseId': exerciseId, 'metric': metric},
+    );
+    return RoutineLeaderboard.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteRoutine(String routineId) async {
+    await _apiClient.delete('/workouts/routines/$routineId');
+  }
+
+  Future<List<WorkoutTemplate>> listGymPrograms({String? coachUserId}) async {
+    final response = await _apiClient.get(
+      '/workouts/programs',
+      queryParameters: {
+        if (coachUserId != null && coachUserId.isNotEmpty)
+          'coachUserId': coachUserId,
+      },
+    );
+    return (response.data as List)
+        .map((j) => WorkoutTemplate.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<WorkoutTemplate> publishRoutine(String routineId) async {
+    final response =
+        await _apiClient.post('/workouts/routines/$routineId/publish');
+    return WorkoutTemplate.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<WorkoutTemplate> unpublishRoutine(String routineId) async {
+    final response =
+        await _apiClient.post('/workouts/routines/$routineId/unpublish');
+    return WorkoutTemplate.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<WorkoutSession> createBuddySession({
+    required String buddyUserId,
+    String? templateId,
+  }) async {
+    final response = await _apiClient.post(
+      '/workouts/sessions/buddy',
+      data: {
+        'buddyUserId': buddyUserId,
+        if (templateId != null) 'templateId': templateId,
+      },
+    );
+    return WorkoutSession.fromJson(response.data as Map<String, dynamic>);
+  }
+
   // ─── Recently Used ─────────────────────────────────────────────────────────
 
   Future<List<Exercise>> getRecentlyUsed({int limit = 10}) async {

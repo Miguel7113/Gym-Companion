@@ -63,6 +63,14 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take an optional photo to share with your gym workout.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose an optional photo to share with your gym workout.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>tether.sync.pending</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

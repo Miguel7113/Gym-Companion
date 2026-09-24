@@ -133,4 +133,38 @@ export class SupabaseService {
     });
     if (error) throw error;
   }
+
+  async createPostImageSignedUrl(
+    path: string,
+    expiresInSeconds = 3600,
+  ): Promise<string | null> {
+    const { data, error } = await this.client.storage
+      .from('post-images')
+      .createSignedUrl(path, expiresInSeconds);
+    if (error) {
+      console.error('[Supabase] failed to sign post image URL', error.message);
+      return null;
+    }
+    return data.signedUrl;
+  }
+
+  /// Signs many post image paths in parallel for feed responses.
+  async createPostImageSignedUrls(
+    paths: string[],
+    expiresInSeconds = 3600,
+  ): Promise<Map<string, string | null>> {
+    const unique = [...new Set(paths.filter(Boolean))];
+    if (unique.length === 0) return new Map();
+
+    const entries = await Promise.all(
+      unique.map(async (path) => {
+        const signedUrl = await this.createPostImageSignedUrl(
+          path,
+          expiresInSeconds,
+        );
+        return [path, signedUrl] as const;
+      }),
+    );
+    return new Map(entries);
+  }
 }

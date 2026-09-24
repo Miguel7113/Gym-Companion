@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
+import { SupabaseService } from '../supabase/supabase.service';
 
 interface SupabaseJwtPayload {
   sub: string;
@@ -18,6 +19,7 @@ export class StaffAuthGuard implements CanActivate {
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    private supabase: SupabaseService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -34,15 +36,31 @@ export class StaffAuthGuard implements CanActivate {
       throw new UnauthorizedException('Auth not configured');
     }
 
-    let payload: SupabaseJwtPayload;
+    let authProviderId: string | undefined;
     try {
-      payload = jwt.verify(token, secret) as SupabaseJwtPayload;
+      if (
+        secret &&
+        secret !== 'your-jwt-secret-from-supabase-dashboard'
+      ) {
+        const payload = jwt.verify(token, secret) as SupabaseJwtPayload;
+        authProviderId = payload.sub;
+      }
     } catch {
-      throw new UnauthorizedException('Invalid or expired token');
+      // Fall through to Supabase Auth validation. This supports projects
+      // using asymmetric signing keys where local jwt.verify will fail.
+    }
+
+    if (!authProviderId) {
+      try {
+        const supabaseUser = await this.supabase.getUser(token);
+        authProviderId = supabaseUser.id;
+      } catch {
+        throw new UnauthorizedException('Invalid or expired token');
+      }
     }
 
     const staff = await this.prisma.gymStaff.findFirst({
-      where: { authProviderId: payload.sub },
+      where: { authProviderId },
     });
 
     if (!staff) {
@@ -53,7 +71,7 @@ export class StaffAuthGuard implements CanActivate {
       staffId: staff.id,
       gymId: staff.gymId,
       role: staff.role,
-      authProviderId: payload.sub,
+      authProviderId,
     };
 
     return true;

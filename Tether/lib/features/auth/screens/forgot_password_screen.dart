@@ -139,7 +139,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                                       size: 36, color: AppTheme.primaryContainer),
                                 ),
                                 const SizedBox(height: AppTheme.stackMd),
-                                Text('RESET PASSWORD',
+                                Text('Reset password',
                                   style: Theme.of(context).textTheme.headlineLarge),
                                 const SizedBox(height: AppTheme.unit),
                                 Text(
@@ -158,7 +158,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                             children: [
                               Icon(Symbols.mail, size: 14, color: AppTheme.onSurfaceVariant),
                               const SizedBox(width: 6),
-                              Text('EMAIL ADDRESS',
+                              Text('Email address',
                                 style: Theme.of(context).textTheme.labelLarge
                                     ?.copyWith(color: AppTheme.onSurfaceVariant)),
                             ],
@@ -235,7 +235,7 @@ class _SuccessState extends StatelessWidget {
               size: 40, color: AppTheme.primaryContainer),
         ),
         const SizedBox(height: AppTheme.stackMd),
-        Text('CHECK YOUR EMAIL',
+        Text('Check your email',
           style: Theme.of(context).textTheme.headlineLarge,
           textAlign: TextAlign.center,
         ),

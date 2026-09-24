@@ -1,23 +1,31 @@
 # Database Schema
 
-All tables use UUID primary keys. The database is PostgreSQL hosted on Supabase.
+Canonical definition: `prisma/schema.prisma` in this package.  
+Website-oriented summary: `docs/archive/tether-plan/TETHER_Database_and_API.md` (repo root).
+
+All IDs are UUIDs. PostgreSQL is hosted on Supabase (local Postgres may be used in some dev setups).
 
 ---
 
-## Entity Relationship Overview
+## Entity relationship (current)
 
 ```
 Gym
- ├── GymStaff           (staff accounts for this gym)
- ├── GymRoster          (authorized member list)
- │     └── User         (signed-up members, linked from GymRoster)
- │           ├── WorkoutSession
- │           │     └── WorkoutSet
- │           │           └── Exercise (global or user-custom)
- │           └── FoodLog
- │                 └── Food (global or user-custom)
- └── (WorkoutSession also has gymId FK directly)
+├── GymStaff
+├── GymRoster ──► User (matched)
+├── User
+│     ├── WorkoutSession ──► WorkoutSet ──► Exercise
+│     ├── WorkoutTemplate (routines)
+│     ├── Post / likes / comments / flags
+│     ├── CoachCertification (as coach)
+│     ├── UserAchievement
+│     └── PushToken / UserSession
+└── Post / CoachCertification / WorkoutSession (gym_id)
 ```
+
+**v1:** one `users.gym_id` per member (no `user_gyms`).  
+**v1 feed:** gym-wide posts (no follows).  
+Food / meal-plan tables were removed (migration `007`).
 
 ---
 
@@ -25,189 +33,95 @@ Gym
 
 ### `gyms`
 
-Represents a gym tenant.
-
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID | PK |
 | name | String | |
-| logoUrl | String? | Optional |
-| primaryColor | String? | Hex color for white-label theming |
+| logoUrl | String? | |
+| primaryColor | String? | White-label accent |
+| timezone | String | Default `UTC` |
 | contactEmail | String? | |
-| subscriptionTier | String | Default: `"basic"` |
-| isActive | Boolean | Default: `true` |
-| createdAt | DateTime | |
-| updatedAt | DateTime | |
-
----
+| subscriptionTier | String | Default `trial` |
+| isActive | Boolean | Default true |
+| createdAt / updatedAt | DateTime | |
 
 ### `gym_staff`
 
-Staff accounts that can log into the admin portal.
+Staff for admin portal / `isStaff` checks.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID | PK |
-| gymId | UUID | FK → gyms.id |
+| gymId | UUID | FK → gyms |
 | email | String | Unique |
-| role | String | Default: `"staff"` |
-| authProviderId | String | Supabase Auth `user.id` |
-| createdAt | DateTime | |
-| updatedAt | DateTime | |
-
-Index: `authProviderId`
-
----
+| role | String | Default `admin` |
+| authProviderId | String? | Supabase Auth user id |
+| createdAt / updatedAt | DateTime | |
 
 ### `gym_roster`
 
-The authorization layer. Staff upload this CSV before members can sign up.
+Pre-approved members before/during signup.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID | PK |
-| gymId | UUID | FK → gyms.id |
-| email | String? | At least one of email/phone required |
-| phone | String? | |
+| gymId | UUID | FK |
+| email / phone | String? | At least one in practice |
 | memberName | String? | |
-| externalMemberId | String? | From gym's own management system |
-| status | String | `"unmatched"` / `"matched"` / `"pending"` |
-| matchedUserId | UUID? | FK → users.id (set when member signs up) |
+| externalMemberId | String? | Gym’s own ID |
+| status | String | `unmatched` / `matched` / `pending` |
+| matchedUserId | String? | Linked user |
 | createdAt | DateTime | |
-| updatedAt | DateTime | |
 
-Unique constraints: `(gymId, email)` and `(gymId, phone)` — prevents duplicate roster entries.
-
----
+Unique: `(gymId, email)`, `(gymId, phone)`.
 
 ### `users`
 
-Members who have signed up via OTP.
+Members after claim. **Single gym.**
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID | PK |
-| gymId | UUID | FK → gyms.id |
-| rosterId | UUID? | FK → gym_roster.id |
-| email | String? | |
-| phone | String? | |
+| gymId | UUID | FK — not multi-gym |
+| rosterId | String? | |
+| email / phone | String? | |
 | displayName | String? | |
-| subscriptionTier | String | Default: `"basic"` |
-| authProviderId | String | Supabase Auth `user.id` |
-| createdAt | DateTime | |
-| updatedAt | DateTime | |
+| gender | String? | |
+| bodyWeightKg / heightCm | Decimal? | |
+| subscriptionTier | String | Default `free` |
+| authProviderId | String? | Unique |
+| createdAt / updatedAt | DateTime | |
 
-Indexes: `authProviderId`, `gymId`
+### Workouts
 
----
+- `exercises` — global + custom (`isCustom`, media, muscles, instructions)
+- `workout_sessions` — `userId`, `gymId`, optional `templateId`, soft `deletedAt`
+- `workout_sets` — strength + cardio fields, soft `deletedAt`
+- `workout_templates` + `workout_template_exercises` — routines/programs
+- `saved_exercises`, `saved_programs`, `recently_used_exercises`
 
-### `exercises`
+### Social
 
-Shared exercise library. Seed data covers common exercises. Users can add custom ones.
+- `posts` — optional unique `workoutSessionId`, `imageUrl`/`imagePath`, flags/deleted
+- `post_likes`, `post_comments`, `post_flags`
+- `coach_certifications` — one per post
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | PK |
-| name | String | |
-| category | String? | e.g. "Chest", "Back", "Legs" |
-| isCustom | Boolean | `false` for seed data, `true` for user-created |
-| createdByUserId | UUID? | FK → users.id (only for custom exercises) |
-| createdAt | DateTime | |
-| updatedAt | DateTime | |
+### Infra
 
----
-
-### `workout_sessions`
-
-A single gym visit/workout. A session has many sets.
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | PK |
-| userId | UUID | FK → users.id |
-| gymId | UUID | FK → gyms.id |
-| startedAt | DateTime | Set on creation |
-| endedAt | DateTime? | Set when PATCH with `ended: true` |
-| notes | String? | Free text |
-| createdAt | DateTime | |
-| updatedAt | DateTime | |
-
-Indexes: `userId`, `gymId`
+- `user_sessions` — refresh token rows
+- `push_tokens` — device tokens (send pipeline TBD)
+- `user_achievements` — PRs / milestones
 
 ---
 
-### `workout_sets`
+## Not in schema (deferred / rejected for v1)
 
-A single logged set within a session.
+`profiles`, `user_gyms`, `user_follows`, `gym_notices`, `reports`, `notifications`, `gym_analytics`.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | PK |
-| sessionId | UUID | FK → workout_sessions.id |
-| exerciseId | UUID | FK → exercises.id |
-| setNumber | Int? | Position within the session |
-| reps | Int? | |
-| weightKg | Decimal? | |
-| rpe | Decimal? | Rate of Perceived Exertion (1–10 scale) |
-| createdAt | DateTime | Used for ordering progress data |
-| updatedAt | DateTime | |
-
-Index: `sessionId`
+Notices in the Flutter UI are still placeholders — choose typed staff posts vs a new notices table before implementing.
 
 ---
 
-### `foods`
+## Access pattern
 
-Food item catalog. Includes seed Kenyan foods, Open Food Facts cached results, and custom user foods.
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | PK |
-| name | String | |
-| source | String? | `"openfoodfacts"`, `"local"`, `"custom"` |
-| externalId | String? | Barcode (unique) |
-| caloriesPer100g | Decimal? | Per 100g |
-| proteinG | Decimal? | |
-| carbsG | Decimal? | |
-| fatG | Decimal? | |
-| isLocalCustom | Boolean | Default: `false` |
-| createdByUserId | UUID? | FK → users.id (for custom foods) |
-| createdAt | DateTime | |
-| updatedAt | DateTime | |
-
----
-
-### `food_logs`
-
-Daily nutrition log entries per user.
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | PK |
-| userId | UUID | FK → users.id |
-| foodId | UUID | FK → foods.id |
-| loggedAt | DateTime | Date of the meal |
-| quantityG | Decimal? | Portion size in grams |
-| mealType | String? | `"breakfast"`, `"lunch"`, `"dinner"`, `"snack"` |
-| createdAt | DateTime | |
-| updatedAt | DateTime | |
-
-Index: `userId`
-
----
-
-## Prisma CLI Commands
-
-```bash
-# Generate the Prisma client after schema changes
-npm run prisma:generate
-
-# Create and run a new migration
-npm run prisma:migrate
-
-# Run seed data (pilot gym + foods + exercises)
-npm run prisma:seed
-
-# Open Prisma Studio (visual DB browser)
-npx prisma studio
-```
+NestJS uses Prisma with the database URL / service role as configured. Clients send Supabase JWTs; NestJS enforces gym scoping. RLS policies in `supabase/migrations/` are secondary hardening.

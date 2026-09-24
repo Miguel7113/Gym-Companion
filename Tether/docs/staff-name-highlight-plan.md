@@ -1,6 +1,6 @@
 # Staff / Coach Name Highlight — Implementation Plan
 
-**Spec origin:** design-system.md §8 Component Library  
+**Spec origin:** docs/archive/planning/design-system.md §8 Component Library  
 > "A commenter's name renders in lime instead of white when they're gym staff/a coach — a nice existing detail, worth formalizing as a rule: `isStaff ? lime : white` for any displayed name across the app."
 
 ---

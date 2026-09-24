@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../social/services/social_service.dart';
 import '../../workouts/models/workout_models.dart';
 import '../../workouts/services/offline_workout_service.dart';
 
@@ -93,20 +94,38 @@ class HomeDataNotifier extends AutoDisposeAsyncNotifier<HomeData> {
 
     final activeSession = await offline.getActiveSession();
     final streakDays = await offline.getStreak();
-    final history = await offline.listSessions(limit: 30);
+    final history = await offline.listLocalSessions(limit: 30);
+    SocialPostPreview? latestAchievementPost;
     final todayCount = history
         .where((s) => s.endedAt != null && _isSameDay(s.startedAt, today))
         .length;
 
+    try {
+      final feed = await ref.read(socialServiceProvider).getFeed(limit: 1);
+      if (feed.isNotEmpty) {
+        final latest = feed.first;
+        latestAchievementPost = SocialPostPreview(
+          authorName: latest.authorName,
+          authorIsStaff: latest.authorIsStaff,
+          caption: latest.content,
+          achievementTag: latest.achievementType,
+          timeAgo: _timeAgo(latest.createdAt),
+        );
+      }
+    } catch (_) {
+      // Home remains usable even if the social teaser cannot load.
+    }
+
     return HomeData(
-      activeSession: activeSession != null &&
+      activeSession:
+          activeSession != null &&
               activeSession.endedAt == null &&
               _isSameDay(activeSession.startedAt, today)
           ? activeSession
           : null,
       todayWorkoutCount: todayCount,
       streakDays: streakDays,
-      latestAchievementPost: null,
+      latestAchievementPost: latestAchievementPost,
       activeTodayCount: 0,
     );
   }
@@ -123,9 +142,17 @@ class HomeDataNotifier extends AutoDisposeAsyncNotifier<HomeData> {
 
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  String _timeAgo(DateTime timestamp) {
+    final diff = DateTime.now().difference(timestamp);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
 }
 
 final homeDataProvider =
     AsyncNotifierProvider.autoDispose<HomeDataNotifier, HomeData>(
-  HomeDataNotifier.new,
-);
+      HomeDataNotifier.new,
+    );

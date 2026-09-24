@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class StaffLoginDto {
   @IsEmail()
@@ -10,10 +10,6 @@ export class StaffLoginDto {
 }
 
 export class StaffInviteDto {
-  @IsString()
-  @IsNotEmpty()
-  gymId!: string;
-
   @IsEmail()
   email!: string;
 
@@ -21,6 +17,14 @@ export class StaffInviteDto {
   @MinLength(6)
   password!: string;
 
+  @IsOptional()
   @IsString()
+  @IsIn(['admin', 'coach'])
   role?: string;
+}
+
+export class UpdateStaffRoleDto {
+  @IsString()
+  @IsIn(['admin', 'coach'])
+  role!: string;
 }

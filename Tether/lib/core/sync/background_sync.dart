@@ -45,9 +45,7 @@ Future<void> registerBackgroundSync() async {
     syncTaskUniqueName,
     syncTaskName,
     frequency: const Duration(minutes: 15),
-    constraints: Constraints(
-      networkType: NetworkType.connected,
-    ),
+    constraints: Constraints(networkType: NetworkType.connected),
   );
 }
 

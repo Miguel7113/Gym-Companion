@@ -6,6 +6,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/database/daos/exercises_dao.dart';
 import '../../../core/database/daos/sessions_dao.dart';
 import '../../../core/database/daos/templates_dao.dart';
+import '../../../core/sync/connectivity_provider.dart';
 import '../../../core/sync/sync_service.dart';
 import '../models/workout_models.dart';
 import 'workout_service.dart';
@@ -43,6 +44,16 @@ class OfflineWorkoutService {
 
   // ── Exercises ─────────────────────────────────────────────────────────────
 
+  Future<int> _prepareExerciseCache() async {
+    var count = await _exercises.getCacheCount();
+    final seedComplete = await _sync.isExerciseSeedComplete();
+    if (count == 0 || !seedComplete) {
+      await _sync.seedIfNeeded();
+      count = await _exercises.getCacheCount();
+    }
+    return count;
+  }
+
   /// Returns exercises from local cache. Falls back to API if cache is empty.
   /// Triggers a background cache refresh if stale (non-blocking).
   Future<List<Exercise>> listExercises({
@@ -51,26 +62,38 @@ class OfflineWorkoutService {
     String? category,
     List<String>? equipment,
   }) async {
-    final cacheCount = await _exercises.getCacheCount();
+    // Wait only when the cache is empty or known to be partial. A stale but
+    // complete cache remains immediately usable while it refreshes in the
+    // background below.
+    final cacheCount = await _prepareExerciseCache();
 
-    // Cache is empty — fetch from API and populate cache before returning
-    if (cacheCount == 0) {
-      debugPrint('[OfflineWorkout] cache empty — fetching from API');
+    // If the seed was unavailable, use the filtered API as an online fallback.
+    if (cacheCount == 0 && await checkIsOnline()) {
+      debugPrint('[OfflineWorkout] seed unavailable — fetching from API');
       try {
         final apiResults = await _api.listExercises(
           query: query,
           bodyPart: bodyPart,
           category: category,
-          equipment: equipment?.isNotEmpty == true ? equipment!.first : null,
+          // Fetch the unfiltered set when multiple equipment values are
+          // selected, then apply the local OR filter below.
+          equipment: equipment?.length == 1 ? equipment!.first : null,
         );
         // Seed these results into cache for next time
         await _exercises.upsertAll(apiResults);
-        return apiResults;
+        return _exercises.filterCombined(
+          bodyPart: bodyPart,
+          equipments: equipment,
+          query: query,
+          category: category,
+        );
       } catch (e) {
         debugPrint('[OfflineWorkout] API fallback failed: $e');
         return [];
       }
     }
+
+    if (cacheCount == 0) return [];
 
     // Cache has data — use it
     // Trigger background refresh if stale (doesn't block the return)
@@ -90,28 +113,41 @@ class OfflineWorkoutService {
   }
 
   Future<List<String>> listBodyParts() async {
-    final cacheCount = await _exercises.getCacheCount();
-    if (cacheCount == 0) {
-      // Fall back to API
-      try {
-        return await _api.listBodyParts();
-      } catch (_) {
-        return [];
-      }
+    final cachedParts = await _exercises.getDistinctBodyParts();
+    if (cachedParts.isNotEmpty) {
+      _refreshExerciseCacheInBackground();
+      return cachedParts;
     }
-    return _exercises.getDistinctBodyParts();
+    if (!await checkIsOnline()) return [];
+    try {
+      final parts = await _api.listBodyParts();
+      _refreshExerciseCacheInBackground();
+      return parts;
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<String>> listEquipments() async {
-    final cacheCount = await _exercises.getCacheCount();
-    if (cacheCount == 0) {
-      try {
-        return await _api.listEquipments();
-      } catch (_) {
-        return [];
-      }
+    final cachedEquipments = await _exercises.getDistinctEquipments();
+    if (cachedEquipments.isNotEmpty) {
+      _refreshExerciseCacheInBackground();
+      return cachedEquipments;
     }
-    return _exercises.getDistinctEquipments();
+    if (!await checkIsOnline()) return [];
+    try {
+      final equipments = await _api.listEquipments();
+      _refreshExerciseCacheInBackground();
+      return equipments;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _refreshExerciseCacheInBackground() {
+    _sync.seedIfNeeded().catchError((error) {
+      debugPrint('[OfflineWorkout] background seed failed: $error');
+    });
   }
 
   Future<Exercise?> getExercise(String id) async {
@@ -173,7 +209,10 @@ class OfflineWorkoutService {
 
   /// Creates a session locally — returns immediately, no network call.
   /// The returned WorkoutSession uses the local UUID as its ID until synced.
-  Future<WorkoutSession> createSession({String? notes}) async {
+  Future<WorkoutSession> createSession({
+    String? notes,
+    String? templateId,
+  }) async {
     final gymId = _currentGymId;
     final userId = _currentUserId;
 
@@ -184,6 +223,7 @@ class OfflineWorkoutService {
     final localId = await _sessions.createSession(
       gymId: gymId,
       userId: userId,
+      templateId: templateId,
       notes: notes,
     );
 
@@ -191,6 +231,7 @@ class OfflineWorkoutService {
       id: localId,
       userId: userId,
       gymId: gymId,
+      templateId: templateId,
       startedAt: DateTime.now(),
       notes: notes,
       sets: const [],
@@ -199,19 +240,25 @@ class OfflineWorkoutService {
 
   /// Ends a session and triggers an immediate sync attempt if online.
   Future<WorkoutSession> endSession(String localId, {String? notes}) async {
+    final resolvedLocalId = await _sessions.resolveLocalId(localId) ?? localId;
     if (notes != null) {
-      await _sessions.updateSessionNotes(localId, notes);
+      await _sessions.updateSessionNotes(resolvedLocalId, notes);
     }
-    await _sessions.endSession(localId);
+    await _sessions.endSession(resolvedLocalId);
 
-    // Non-blocking sync attempt — if offline this just logs and returns
-    _sync.syncPendingSessions().catchError((e) {
-      debugPrint('[OfflineWorkout] post-end sync failed: $e');
-    });
+    // Push the completed session to the server when online so sharing can use
+    // the server session id immediately afterward.
+    if (await checkIsOnline()) {
+      try {
+        await _sync.syncPendingSessions();
+      } catch (e) {
+        debugPrint('[OfflineWorkout] post-end sync failed: $e');
+      }
+    }
 
-    final row = await _sessions.getSessionByLocalId(localId);
+    final row = await _sessions.getSessionByLocalId(resolvedLocalId);
     if (row == null) throw Exception('Session $localId not found');
-    return _sessions.toWorkoutSession(row);
+    return _hydrateSession(row);
   }
 
   // Expose the DB directly so endSession can query it — no longer needed
@@ -251,9 +298,7 @@ class OfflineWorkoutService {
     );
 
     // Record exercise usage in recently_used_cache
-    await _exercises
-        .recordUsage(_currentUserId, exerciseId)
-        .catchError((_) {});
+    await _exercises.recordUsage(_currentUserId, exerciseId).catchError((_) {});
 
     _sync.syncPendingSessions().catchError((e) {
       debugPrint('[OfflineWorkout] post-set sync failed: $e');
@@ -284,23 +329,70 @@ class OfflineWorkoutService {
     await _sessions.deleteSession(sessionId);
   }
 
+  Future<String?> getServerSessionId(String sessionId) async {
+    final localId = await _sessions.resolveLocalId(sessionId);
+    if (localId == null) return null;
+    final session = await _sessions.getSessionByLocalId(localId);
+    return session?.serverId;
+  }
+
   // ── Session history ────────────────────────────────────────────────────────
 
+  Future<List<WorkoutSession>> listLocalSessions({int limit = 20}) async {
+    final rows = await _sessions.getHistory(_currentUserId, limit: limit);
+    return Future.wait(rows.map(_hydrateSession));
+  }
+
+  Future<WorkoutSession> _hydrateSession(PendingSession row) async {
+    final setRows = await _sessions.getSetsForSession(row.localId);
+    final sets = await Future.wait(
+      setRows.map((setRow) async {
+        final exercise = await _exercises.getById(setRow.exerciseId);
+        return _sessions.toWorkoutSet(setRow, exercise);
+      }),
+    );
+    return _sessions.toWorkoutSession(row, sets);
+  }
+
   Future<List<WorkoutSession>> listSessions({int limit = 20}) async {
-    final userId = _currentUserId;
-    final rows = await _sessions.getHistory(userId, limit: limit);
-    final result = <WorkoutSession>[];
-    for (final r in rows) {
-      result.add(_sessions.toWorkoutSession(r));
+    final localSessions = await listLocalSessions(limit: limit);
+
+    // Merge local + remote by id. Prefer whichever copy has more sets so a
+    // freshly finished offline workout isn't replaced by an empty server stub.
+    if (await checkIsOnline()) {
+      try {
+        final remoteSessions = (await _api.listSessions(
+          limit: limit,
+        )).where((session) => session.endedAt != null).toList();
+
+        final byId = <String, WorkoutSession>{};
+        for (final session in remoteSessions) {
+          byId[session.id] = session;
+        }
+        for (final local in localSessions) {
+          final existing = byId[local.id];
+          if (existing == null ||
+              local.sets.length > existing.sets.length) {
+            byId[local.id] = local;
+          }
+        }
+
+        final merged = byId.values.toList()
+          ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+        return merged.take(limit).toList();
+      } catch (e) {
+        debugPrint('[OfflineWorkout] remote history unavailable: $e');
+      }
     }
-    return result;
+
+    return localSessions;
   }
 
   Future<WorkoutSession?> getActiveSession() async {
     final userId = _currentUserId;
     final row = await _sessions.getActiveSession(userId);
     if (row == null) return null;
-    return _sessions.toWorkoutSession(row);
+    return _hydrateSession(row);
   }
 
   // ── Stats (for home screen) ────────────────────────────────────────────────

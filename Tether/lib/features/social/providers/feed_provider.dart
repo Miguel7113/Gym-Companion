@@ -9,23 +9,53 @@ import '../services/social_service.dart';
 // reverts on failure so the user never sees a stale count.
 // ─────────────────────────────────────────────────────────────────────────────
 class FeedNotifier extends AutoDisposeAsyncNotifier<List<FeedPost>> {
+  static const _pageSize = 20;
+  int _offset = 0;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+
   @override
-  Future<List<FeedPost>> build() => _fetch();
+  Future<List<FeedPost>> build() async {
+    _offset = 0;
+    _hasMore = true;
+    return _fetch();
+  }
 
   Future<List<FeedPost>> _fetch() async {
     try {
       final svc = ref.read(socialServiceProvider);
-      return await svc.getFeed(limit: 20, offset: 0);
+      final posts = await svc.getFeed(limit: _pageSize, offset: _offset);
+      _hasMore = posts.length == _pageSize;
+      _offset = posts.length;
+      return posts;
     } catch (e) {
       debugFeedError(e);
-      // Return empty list gracefully — screen shows empty state
-      return [];
+      rethrow;
     }
   }
 
   Future<void> refresh() async {
+    _offset = 0;
+    _hasMore = true;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(_fetch);
+  }
+
+  Future<void> loadMore() async {
+    if (!_hasMore || _isLoadingMore || state.valueOrNull == null) return;
+    _isLoadingMore = true;
+    try {
+      final svc = ref.read(socialServiceProvider);
+      final next = await svc.getFeed(limit: _pageSize, offset: _offset);
+      final current = state.valueOrNull ?? const <FeedPost>[];
+      _hasMore = next.length == _pageSize;
+      _offset += next.length;
+      state = AsyncValue.data([...current, ...next]);
+    } catch (e) {
+      debugFeedError(e);
+    } finally {
+      _isLoadingMore = false;
+    }
   }
 
   // ── Optimistic like ────────────────────────────────────────────────────────
@@ -75,6 +105,26 @@ class FeedNotifier extends AutoDisposeAsyncNotifier<List<FeedPost>> {
     }
   }
 
+  Future<void> certifyPost(String postId) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    try {
+      final certification = await ref
+          .read(socialServiceProvider)
+          .certifyPost(postId);
+      final updated = current
+          .map(
+            (post) => post.id == postId
+                ? post.copyWith(coachCertification: certification)
+                : post,
+          )
+          .toList();
+      state = AsyncValue.data(updated);
+    } catch (e) {
+      debugFeedError(e);
+    }
+  }
+
   // ── Add post (staff create or PR share) ───────────────────────────────────
   void prependPost(FeedPost post) {
     final current = state.valueOrNull ?? [];
@@ -84,8 +134,8 @@ class FeedNotifier extends AutoDisposeAsyncNotifier<List<FeedPost>> {
 
 final feedProvider =
     AsyncNotifierProvider.autoDispose<FeedNotifier, List<FeedPost>>(
-  FeedNotifier.new,
-);
+      FeedNotifier.new,
+    );
 
 void debugFeedError(Object e) {
   // ignore: avoid_print

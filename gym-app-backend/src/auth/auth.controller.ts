@@ -1,4 +1,16 @@
-import { Body, Controller, Headers, Post, UnauthorizedException, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  Param,
+  Patch,
+  Post,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
@@ -7,8 +19,21 @@ import { CheckMemberDto } from './dto/check-member.dto';
 import { LoginDto } from './dto/login.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { StaffInviteDto, StaffLoginDto } from './dto/staff-auth.dto';
+import {
+  StaffInviteDto,
+  StaffLoginDto,
+  UpdateStaffRoleDto,
+} from './dto/staff-auth.dto';
 import { StaffAuthGuard } from './staff-auth.guard';
+import { SupabaseAuthGuard } from './supabase-auth.guard';
+import {
+  CurrentStaff,
+  CurrentMember,
+  type StaffContext,
+} from './decorators/current-user.decorator';
+
+const LOGIN_LIMIT = { default: { limit: 20, ttl: 60_000 } };
+const EMAIL_LIMIT = { default: { limit: 10, ttl: 60_000 } };
 
 @Controller('auth')
 export class AuthController {
@@ -19,18 +44,21 @@ export class AuthController {
   //   { exists: false }                    → not a member → show error, stop
   //   { exists: true, hasPassword: false } → new member → proceed with OTP
   //   { exists: true, hasPassword: true }  → returning → show LoginScreen
+  @Throttle(LOGIN_LIMIT)
   @Post('check-member')
   checkMember(@Body() dto: CheckMemberDto) {
     return this.authService.checkMember(dto);
   }
 
   // ── Day-to-day password login ──────────────────────────────────────────────
+  @Throttle(LOGIN_LIMIT)
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   // ── Set password (called once after first OTP/magic link verification) ─────
+  @Throttle(LOGIN_LIMIT)
   @Post('set-password')
   setPassword(
     @Headers('authorization') authHeader: string,
@@ -45,16 +73,19 @@ export class AuthController {
   }
 
   // ── Forgot password ────────────────────────────────────────────────────────
+  @Throttle(EMAIL_LIMIT)
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
+  @Throttle(EMAIL_LIMIT)
   @Post('request-otp')
   requestOtp(@Body() dto: RequestOtpDto) {
     return this.authService.requestOtp(dto);
   }
 
+  @Throttle(LOGIN_LIMIT)
   @Post('verify-otp')
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
@@ -73,14 +104,62 @@ export class AuthController {
     return this.authService.claimSession(accessToken, dto);
   }
 
+  @Throttle(LOGIN_LIMIT)
   @Post('staff/login')
   staffLogin(@Body() dto: StaffLoginDto) {
     return this.authService.staffLogin(dto);
   }
 
+  /** Flutter coach/admin login — member JWT with staff role claims. */
+  @Throttle(LOGIN_LIMIT)
+  @Post('coach/login')
+  coachLogin(@Body() dto: StaffLoginDto) {
+    return this.authService.coachLogin(dto);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get('coaches')
+  listCoaches(@CurrentMember() member: { gymId: string }) {
+    return this.authService.listCoaches(member.gymId);
+  }
+
   @UseGuards(StaffAuthGuard)
   @Post('staff/invite')
-  staffInvite(@Body() dto: StaffInviteDto) {
-    return this.authService.staffInvite(dto);
+  staffInvite(
+    @CurrentStaff() staff: StaffContext,
+    @Body() dto: StaffInviteDto,
+  ) {
+    if (staff.role.toLowerCase() !== 'admin') {
+      throw new ForbiddenException('Only admins can invite staff');
+    }
+    return this.authService.staffInvite(staff.gymId, dto);
+  }
+
+  @UseGuards(StaffAuthGuard)
+  @Get('staff')
+  listStaff(@CurrentStaff() staff: StaffContext) {
+    return this.authService.listStaff(staff.gymId);
+  }
+
+  @UseGuards(StaffAuthGuard)
+  @Patch('staff/:staffId')
+  updateStaffRole(
+    @CurrentStaff() staff: StaffContext,
+    @Param('staffId') staffId: string,
+    @Body() dto: UpdateStaffRoleDto,
+  ) {
+    if (staff.role.toLowerCase() !== 'admin') {
+      throw new ForbiddenException('Only admins can manage staff roles');
+    }
+    return this.authService.updateStaffRole(staff.gymId, staffId, dto);
+  }
+
+  @UseGuards(StaffAuthGuard)
+  @Post('staff/members/:memberId/reset-password')
+  sendMemberPasswordReset(
+    @CurrentStaff() staff: StaffContext,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.authService.sendMemberPasswordReset(staff.gymId, memberId);
   }
 }

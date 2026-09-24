@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/sync/connectivity_provider.dart';
 import '../models/workout_models.dart';
 import '../services/offline_workout_service.dart';
+import '../services/workout_service.dart';
 import 'exercise_picker_sheet.dart';
+import '../widgets/exercise_info_sheet.dart';
+import '../widgets/exercise_thumbnail.dart';
 import 'workout_session_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,7 +24,15 @@ import 'workout_session_screen.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 class WorkoutBuilderScreen extends ConsumerStatefulWidget {
   final LocalWorkoutTemplate? template;
-  const WorkoutBuilderScreen({super.key, this.template});
+  final WorkoutTemplate? routine;
+  final bool saveAsRoutine;
+
+  const WorkoutBuilderScreen({
+    super.key,
+    this.template,
+    this.routine,
+    this.saveAsRoutine = false,
+  });
 
   @override
   ConsumerState<WorkoutBuilderScreen> createState() =>
@@ -32,6 +44,7 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
   final List<BuilderExerciseEntry> _exercises = [];
   bool _isStarting = false;
   bool _loadingTemplate = false;
+  bool _shareRoutine = false;
 
   @override
   void initState() {
@@ -39,6 +52,9 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
     if (widget.template != null) {
       _nameCtrl.text = widget.template!.name;
       _loadTemplateExercises();
+    } else if (widget.routine != null) {
+      _nameCtrl.text = widget.routine!.name;
+      _loadRoutineExercises();
     }
   }
 
@@ -80,6 +96,47 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
       }
     }
 
+    if (mounted) setState(() => _loadingTemplate = false);
+  }
+
+  Future<void> _loadRoutineExercises() async {
+    final routine = widget.routine;
+    if (routine == null) return;
+    setState(() => _loadingTemplate = true);
+
+    final offline = ref.read(offlineWorkoutServiceProvider);
+    final loaded = await Future.wait(
+      routine.exercises.map((planned) async {
+        try {
+          final exercise =
+              planned.exercise ?? await offline.getExercise(planned.exerciseId);
+          if (exercise == null) return null;
+          final count = planned.defaultSets ?? 1;
+          final sets = List.generate(
+            count,
+            (_) => BuilderSet(
+              reps: planned.defaultReps,
+              weightKg: planned.defaultWeightKg,
+              durationSecs: planned.defaultDurationSecs,
+              distanceM: planned.defaultDistanceM,
+            ),
+          );
+          return BuilderExerciseEntry(
+            uid: '${exercise.id}_${DateTime.now().microsecondsSinceEpoch}',
+            exercise: exercise,
+            sets: sets,
+          );
+        } catch (e) {
+          debugPrint('[WorkoutBuilder] routine load exercise failed: $e');
+          return null;
+        }
+      }),
+    );
+    if (mounted) {
+      setState(() {
+        _exercises.addAll(loaded.whereType<BuilderExerciseEntry>());
+      });
+    }
     if (mounted) setState(() => _loadingTemplate = false);
   }
 
@@ -154,7 +211,10 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
       // This will NEVER fail due to a network issue.
       final svc = ref.read(offlineWorkoutServiceProvider);
       final name = _nameCtrl.text.trim();
-      final session = await svc.createSession(notes: name.isEmpty ? null : name);
+      final session = await svc.createSession(
+        notes: name.isEmpty ? null : name,
+        templateId: widget.routine?.id,
+      );
 
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -170,13 +230,49 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
       debugPrint('[WorkoutBuilder] startWorkout failed: $e');
       setState(() => _isStarting = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Couldn't start: ${e.toString().replaceAll('Exception: ', '')}"),
-            backgroundColor: AppTheme.errorContainer,
-          ),
+        showAppSnack(
+          context,
+          "Couldn't start: ${e.toString().replaceAll('Exception: ', '')}",
+          tone: AppSnackTone.error,
         );
       }
+    }
+  }
+
+  Future<void> _saveRoutine() async {
+    if (_exercises.isEmpty) return;
+    setState(() => _isStarting = true);
+    try {
+      final exercises = _exercises.asMap().entries.map((entry) {
+        final firstSet =
+            entry.value.sets.isNotEmpty ? entry.value.sets.first : BuilderSet();
+        return WorkoutTemplateExercise(
+          id: '',
+          templateId: '',
+          exerciseId: entry.value.exercise.id,
+          sortOrder: entry.key,
+          defaultSets: entry.value.sets.length,
+          defaultReps: firstSet.reps,
+          defaultWeightKg: firstSet.weightKg,
+          defaultDurationSecs: firstSet.durationSecs,
+          defaultDistanceM: firstSet.distanceM,
+        );
+      }).toList();
+      await ref.read(workoutServiceProvider).createRoutine(
+            name: _nameCtrl.text.trim().isEmpty
+                ? 'My Routine'
+                : _nameCtrl.text.trim(),
+            exercises: exercises,
+            isShared: _shareRoutine,
+          );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isStarting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Couldn't save routine: $e")),
+      );
     }
   }
 
@@ -227,7 +323,9 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 12),
                     child: GestureDetector(
-                      onTap: canStart ? _startWorkout : null,
+                      onTap: canStart
+                          ? (widget.saveAsRoutine ? _saveRoutine : _startWorkout)
+                          : null,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 18, vertical: 9),
@@ -252,7 +350,7 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
                                 ),
                               )
                             : Text(
-                                'BEGIN',
+                                widget.saveAsRoutine ? 'Save' : 'Begin',
                                 style: Theme.of(context).textTheme.labelLarge
                                     ?.copyWith(
                                   color: canStart
@@ -316,6 +414,22 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
                   ),
                 ),
 
+              if (widget.saveAsRoutine)
+                SliverToBoxAdapter(
+                  child: SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.containerMargin,
+                    ),
+                    title: const Text('Share with my gym'),
+                    subtitle: const Text(
+                      'Other members can discover and copy this routine',
+                    ),
+                    value: _shareRoutine,
+                    activeColor: AppTheme.primaryContainer,
+                    onChanged: (value) => setState(() => _shareRoutine = value),
+                  ),
+                ),
+
               // ── Exercise list ─────────────────────────────────────────
               SliverPadding(
                 padding: const EdgeInsets.symmetric(
@@ -327,6 +441,11 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
                       child: _BuilderExerciseCard(
                         entry: _exercises[i],
                         exerciseNumber: i + 1,
+                        onOpenInfo: () => ExerciseInfoSheet.show(
+                          context,
+                          exercise: _exercises[i].exercise,
+                          routineId: widget.routine?.id,
+                        ),
                         onToggleExpand: () => _toggleExpand(_exercises[i].uid),
                         onRemove: () => _removeExercise(_exercises[i].uid),
                         onAddSet: () => _addSet(_exercises[i].uid),
@@ -362,12 +481,17 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
                             color: AppTheme.onSurfaceVariant.withOpacity(0.3)),
                         ),
                         const SizedBox(height: 16),
-                        Text('NO EXERCISES YET',
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(color: AppTheme.onSurfaceVariant)),
+                        Text('No exercises yet',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: AppTheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                              )),
                         const SizedBox(height: 6),
-                        Text('Tap "Add Exercise" to build your workout',
-                          style: Theme.of(context).textTheme.bodySmall,
+                        Text('Tap Add exercise to build your workout',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppTheme.onSurfaceVariant,
+                              ),
                           textAlign: TextAlign.center),
                       ],
                     ),
@@ -385,7 +509,7 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
             right: AppTheme.containerMargin,
             bottom: bottomPad + 16,
             child: SecondaryButton(
-              label: 'Add Exercise',
+              label: 'Add exercise',
               icon: Symbols.add,
               onPressed: () => ExercisePickerSheet.show(
                 context,
@@ -405,6 +529,7 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
 class _BuilderExerciseCard extends StatelessWidget {
   final BuilderExerciseEntry entry;
   final int exerciseNumber;
+  final VoidCallback onOpenInfo;
   final VoidCallback onToggleExpand;
   final VoidCallback onRemove;
   final VoidCallback onAddSet;
@@ -414,6 +539,7 @@ class _BuilderExerciseCard extends StatelessWidget {
   const _BuilderExerciseCard({
     required this.entry,
     required this.exerciseNumber,
+    required this.onOpenInfo,
     required this.onToggleExpand,
     required this.onRemove,
     required this.onAddSet,
@@ -429,44 +555,33 @@ class _BuilderExerciseCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXl),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
       ),
       child: Column(
         children: [
-          // ── Exercise header ──────────────────────────────────────────
-          GestureDetector(
-            onTap: onToggleExpand,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  // Number badge
-                  Container(
-                    width: 28, height: 28,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryContainer.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: AppTheme.primaryContainer.withOpacity(0.3)),
-                    ),
-                    child: Center(
-                      child: Text('$exerciseNumber',
-                        style: Theme.of(context).textTheme.labelSmall
-                            ?.copyWith(color: AppTheme.primaryContainer)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // Exercise name + meta
-                  Expanded(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 8, 8),
+            child: Row(
+              children: [
+                ExerciseThumbnail(exercise: ex, size: 44),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onOpenInfo,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(ex.name,
+                        Text(
+                          ex.name,
                           style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryContainer,
+                              ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         Text(
                           [
                             if (ex.category != null) ex.category!,
@@ -478,28 +593,33 @@ class _BuilderExerciseCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Remove
-                  GestureDetector(
-                    onTap: onRemove,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: AppTheme.errorContainer.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Symbols.delete, size: 14,
-                          color: AppTheme.error),
+                ),
+                GestureDetector(
+                  onTap: onRemove,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorContainer.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Symbols.delete,
+                      size: 14,
+                      color: AppTheme.error,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Expand chevron
-                  Icon(
+                ),
+                IconButton(
+                  onPressed: onToggleExpand,
+                  icon: Icon(
                     entry.isExpanded
                         ? Symbols.keyboard_arrow_up
                         : Symbols.keyboard_arrow_down,
-                    size: 18, color: AppTheme.onSurfaceVariant),
-                ],
-              ),
+                    size: 20,
+                    color: AppTheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
 

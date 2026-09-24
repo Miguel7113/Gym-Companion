@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
-import '../../../core/navigation/main_navigation.dart';
 import '../models/auth_models.dart';
 import '../services/auth_service.dart';
 import 'forgot_password_screen.dart';
@@ -18,8 +17,14 @@ import 'forgot_password_screen.dart';
 class LoginScreen extends ConsumerStatefulWidget {
   final Gym gym;
   final String email;
+  final bool initialCoachLogin;
 
-  const LoginScreen({super.key, required this.gym, required this.email});
+  const LoginScreen({
+    super.key,
+    required this.gym,
+    required this.email,
+    this.initialCoachLogin = false,
+  });
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -33,12 +38,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  late bool _isCoachLogin;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _emailCtrl = TextEditingController(text: widget.email);
+    _isCoachLogin = widget.initialCoachLogin;
     _passwordFocus.addListener(() => setState(() {}));
   }
 
@@ -55,24 +62,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
-      await ref.read(authServiceProvider).login(
-        gymId: widget.gym.id,
-        email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text,
-      );
+      final email = _emailCtrl.text.trim();
+      final password = _passwordCtrl.text;
+      if (_isCoachLogin) {
+        await ref.read(authServiceProvider).coachLogin(
+          email: email,
+          password: password,
+        );
+      } else {
+        await ref.read(authServiceProvider).login(
+          gymId: widget.gym.id,
+          email: email,
+          password: password,
+        );
+      }
       if (!mounted) return;
-      // Navigate directly — clear the whole auth stack
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainNavigation()),
-        (route) => false,
-      );
+      // The root AuthGate owns the authenticated app route. Returning to it
+      // avoids mounting a second MainNavigation while the auth stream rebuilds.
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
       final raw = e.toString().replaceAll('Exception: ', '');
       setState(() {
         _isLoading = false;
         final msg = raw.toLowerCase();
-        if (msg.contains('incorrect') || msg.contains('invalid') || msg.contains('401')) {
+        if (msg.contains('no coach account') || msg.contains('403')) {
+          _errorMessage = 'No coach account for this gym.';
+        } else if (msg.contains('incorrect') || msg.contains('invalid') || msg.contains('401')) {
           _errorMessage = 'Incorrect email or password.';
         } else if (msg.contains('not found') || msg.contains('gym member')) {
           _errorMessage = 'Your account was not found as a current gym member. Contact your gym admin.';
@@ -161,7 +177,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       size: 36, color: AppTheme.primaryContainer),
                                 ),
                                 const SizedBox(height: AppTheme.stackMd),
-                                Text('WELCOME BACK',
+                                Text('Welcome back',
                                   style: Theme.of(context).textTheme.headlineLarge),
                                 const SizedBox(height: AppTheme.unit),
                                 Text('Sign in to ${widget.gym.name}',
@@ -176,7 +192,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           const SizedBox(height: AppTheme.stackLg),
 
                           // Email (pre-filled, editable)
-                          _FieldLabel(label: 'EMAIL ADDRESS', icon: Symbols.mail, focused: false),
+                          _FieldLabel(label: 'Email address', icon: Symbols.mail, focused: false),
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _emailCtrl,
@@ -222,6 +238,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               return null;
                             },
                             onFieldSubmitted: (_) => _login(),
+                          ),
+
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              "I'm a coach",
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            subtitle: Text(
+                              'Sign in with your staff email and password',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppTheme.onSurfaceVariant,
+                                  ),
+                            ),
+                            value: _isCoachLogin,
+                            activeThumbColor: AppTheme.onPrimaryContainer,
+                            activeTrackColor: AppTheme.primaryContainer,
+                            onChanged: _isLoading
+                                ? null
+                                : (value) => setState(() => _isCoachLogin = value),
                           ),
 
                           // Forgot password

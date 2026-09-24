@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 
 interface SupabaseJwtPayload {
@@ -22,6 +23,7 @@ export class SupabaseAuthGuard implements CanActivate {
     private reflector: Reflector,
     private config: ConfigService,
     private prisma: PrismaService,
+    private supabase: SupabaseService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -78,15 +80,31 @@ export class SupabaseAuthGuard implements CanActivate {
       throw new UnauthorizedException('Auth not configured');
     }
 
-    let payload: SupabaseJwtPayload;
+    let authProviderId: string | undefined;
     try {
-      payload = jwt.verify(token, secret) as SupabaseJwtPayload;
+      if (
+        secret &&
+        secret !== 'your-jwt-secret-from-supabase-dashboard'
+      ) {
+        const payload = jwt.verify(token, secret) as SupabaseJwtPayload;
+        authProviderId = payload.sub;
+      }
     } catch {
-      throw new UnauthorizedException('Invalid or expired token');
+      // Fall through to Supabase Auth validation. Projects using asymmetric
+      // signing keys cannot be verified with the legacy JWT secret locally.
+    }
+
+    if (!authProviderId) {
+      try {
+        const supabaseUser = await this.supabase.getUser(token);
+        authProviderId = supabaseUser.id;
+      } catch {
+        throw new UnauthorizedException('Invalid or expired token');
+      }
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { authProviderId: payload.sub },
+      where: { authProviderId },
       select: {
         id: true,
         gymId: true,
@@ -101,7 +119,7 @@ export class SupabaseAuthGuard implements CanActivate {
     // Check if this user is also a staff member at their gym
     const staffRecord = await this.prisma.gymStaff.findFirst({
       where: {
-        authProviderId: payload.sub,
+        authProviderId,
         gymId: user.gymId,
       },
     });
@@ -109,7 +127,7 @@ export class SupabaseAuthGuard implements CanActivate {
     request.member = {
       userId: user.id,
       gymId: user.gymId,
-      authProviderId: payload.sub,
+      authProviderId,
       isStaff: !!staffRecord,
       staffRole: staffRecord?.role ?? null,
     };

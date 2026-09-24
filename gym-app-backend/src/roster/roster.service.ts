@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { parse } from 'csv-parse/sync';
 import { PrismaService } from '../prisma/prisma.service';
 import { RosterEntryDto } from './dto/roster-entry.dto';
@@ -151,7 +151,15 @@ export class RosterService {
     });
   }
 
-  async approvePending(rosterId: string) {
+  async approvePending(gymId: string, rosterId: string) {
+    const roster = await this.prisma.gymRoster.findFirst({
+      where: { id: rosterId, gymId, status: 'pending' },
+      select: { id: true },
+    });
+    if (!roster) {
+      throw new NotFoundException('Pending roster entry not found');
+    }
+
     return this.prisma.gymRoster.update({
       where: { id: rosterId },
       data: { status: 'unmatched' }, // becomes eligible for normal matching/signup

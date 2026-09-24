@@ -125,6 +125,7 @@ class WorkoutSession {
   final String id;
   final String userId;
   final String gymId;
+  final String? templateId;
   final DateTime startedAt;
   final DateTime? endedAt;
   final String? notes;
@@ -134,6 +135,7 @@ class WorkoutSession {
     required this.id,
     required this.userId,
     required this.gymId,
+    this.templateId,
     required this.startedAt,
     this.endedAt,
     this.notes,
@@ -151,6 +153,7 @@ class WorkoutSession {
 class WorkoutTemplate {
   final String id;
   final String? gymId;
+  final String? createdByUserId;
   final String name;
   final String? description;
   final String? category;
@@ -165,6 +168,7 @@ class WorkoutTemplate {
   const WorkoutTemplate({
     required this.id,
     this.gymId,
+    this.createdByUserId,
     required this.name,
     this.description,
     this.category,
@@ -178,6 +182,9 @@ class WorkoutTemplate {
 
   factory WorkoutTemplate.fromJson(Map<String, dynamic> json) => _$WorkoutTemplateFromJson(json);
   Map<String, dynamic> toJson() => _$WorkoutTemplateToJson(this);
+
+  bool get isShared => gymId != null;
+  bool get isCoachProgram => source == 'coach_program';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -214,6 +221,59 @@ class WorkoutTemplateExercise {
   factory WorkoutTemplateExercise.fromJson(Map<String, dynamic> json) =>
       _$WorkoutTemplateExerciseFromJson(json);
   Map<String, dynamic> toJson() => _$WorkoutTemplateExerciseToJson(this);
+}
+
+class RoutineLeaderboardEntry {
+  final String userId;
+  final String displayName;
+  final double value;
+  final DateTime certifiedAt;
+  final String coachName;
+
+  const RoutineLeaderboardEntry({
+    required this.userId,
+    required this.displayName,
+    required this.value,
+    required this.certifiedAt,
+    required this.coachName,
+  });
+
+  factory RoutineLeaderboardEntry.fromJson(Map<String, dynamic> json) {
+    return RoutineLeaderboardEntry(
+      userId: json['userId'] as String,
+      displayName: json['displayName'] as String? ?? 'Gym member',
+      value: (json['value'] as num).toDouble(),
+      certifiedAt: DateTime.parse(json['certifiedAt'] as String),
+      coachName: json['coachName'] as String? ?? 'Coach',
+    );
+  }
+}
+
+class RoutineLeaderboard {
+  final String routineId;
+  final String exerciseId;
+  final String metric;
+  final List<RoutineLeaderboardEntry> entries;
+
+  const RoutineLeaderboard({
+    required this.routineId,
+    required this.exerciseId,
+    required this.metric,
+    required this.entries,
+  });
+
+  factory RoutineLeaderboard.fromJson(Map<String, dynamic> json) {
+    return RoutineLeaderboard(
+      routineId: json['routineId'] as String,
+      exerciseId: json['exerciseId'] as String,
+      metric: json['metric'] as String,
+      entries: (json['entries'] as List<dynamic>? ?? [])
+          .map((entry) => RoutineLeaderboardEntry.fromJson(
+                entry as Map<String, dynamic>,
+              ))
+          .toList(),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,8 +415,9 @@ class CreateExerciseDto {
 @JsonSerializable()
 class CreateSessionDto {
   final String? notes;
+  final String? templateId;
 
-  const CreateSessionDto({this.notes});
+  const CreateSessionDto({this.notes, this.templateId});
 
   factory CreateSessionDto.fromJson(Map<String, dynamic> json) =>
       _$CreateSessionDtoFromJson(json);

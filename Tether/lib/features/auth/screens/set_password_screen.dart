@@ -3,16 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
-import '../../../core/navigation/main_navigation.dart';
 import '../services/auth_service.dart';
-
-// Simple wrapper that goes straight to MainNavigation after password is set.
-// Using this instead of popUntil avoids the _AuthGate re-evaluation race.
-class _MainAppEntry extends StatelessWidget {
-  const _MainAppEntry();
-  @override
-  Widget build(BuildContext context) => const MainNavigation();
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SetPasswordScreen
@@ -67,12 +58,9 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
     try {
       await ref.read(authServiceProvider).setPassword(_passwordCtrl.text);
       if (!mounted) return;
-      // Navigate directly to the main app — don't rely on _AuthGate re-evaluation
-      // since the stream may not fire immediately after the session refresh.
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const _MainAppEntry()),
-        (route) => false,
-      );
+      // Let the root AuthGate replace this screen once the refreshed claims
+      // arrive. This keeps a single MainNavigation in the widget tree.
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
       setState(() {

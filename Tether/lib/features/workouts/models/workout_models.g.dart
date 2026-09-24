@@ -102,6 +102,7 @@ WorkoutSession _$WorkoutSessionFromJson(Map<String, dynamic> json) =>
       id: json['id'] as String,
       userId: json['userId'] as String,
       gymId: json['gymId'] as String,
+      templateId: json['templateId'] as String?,
       startedAt: DateTime.parse(json['startedAt'] as String),
       endedAt: json['endedAt'] == null
           ? null
@@ -119,6 +120,7 @@ Map<String, dynamic> _$WorkoutSessionToJson(WorkoutSession instance) =>
       'id': instance.id,
       'userId': instance.userId,
       'gymId': instance.gymId,
+      'templateId': instance.templateId,
       'startedAt': instance.startedAt.toIso8601String(),
       'endedAt': instance.endedAt?.toIso8601String(),
       'notes': instance.notes,
@@ -129,6 +131,7 @@ WorkoutTemplate _$WorkoutTemplateFromJson(Map<String, dynamic> json) =>
     WorkoutTemplate(
       id: json['id'] as String,
       gymId: json['gymId'] as String?,
+      createdByUserId: json['createdByUserId'] as String?,
       name: json['name'] as String,
       description: json['description'] as String?,
       category: json['category'] as String?,
@@ -151,6 +154,7 @@ Map<String, dynamic> _$WorkoutTemplateToJson(WorkoutTemplate instance) =>
     <String, dynamic>{
       'id': instance.id,
       'gymId': instance.gymId,
+      'createdByUserId': instance.createdByUserId,
       'name': instance.name,
       'description': instance.description,
       'category': instance.category,
@@ -206,10 +210,16 @@ Map<String, dynamic> _$CreateExerciseDtoToJson(CreateExerciseDto instance) =>
     <String, dynamic>{'name': instance.name, 'category': instance.category};
 
 CreateSessionDto _$CreateSessionDtoFromJson(Map<String, dynamic> json) =>
-    CreateSessionDto(notes: json['notes'] as String?);
+    CreateSessionDto(
+      notes: json['notes'] as String?,
+      templateId: json['templateId'] as String?,
+    );
 
 Map<String, dynamic> _$CreateSessionDtoToJson(CreateSessionDto instance) =>
-    <String, dynamic>{'notes': instance.notes};
+    <String, dynamic>{
+      'notes': instance.notes,
+      'templateId': instance.templateId,
+    };
 
 UpdateSessionDto _$UpdateSessionDtoFromJson(Map<String, dynamic> json) =>
     UpdateSessionDto(

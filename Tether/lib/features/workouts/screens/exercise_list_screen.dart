@@ -100,11 +100,13 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.initialBodyPart != null
-            ? widget.initialBodyPart!.toUpperCase()
-            : widget.initialCategory != null
-                ? widget.initialCategory!.toUpperCase()
-                : 'Select Exercise'),
+        title: Text(
+          widget.initialBodyPart != null
+              ? widget.initialBodyPart!.toUpperCase()
+              : widget.initialCategory != null
+              ? widget.initialCategory!.toUpperCase()
+              : 'Select Exercise',
+        ),
       ),
       body: Column(
         children: [
@@ -130,8 +132,8 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? _buildErrorView()
-                    : _buildExerciseList(),
+                ? _buildErrorView()
+                : _buildExerciseList(),
           ),
         ],
       ),
@@ -139,8 +141,45 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
   }
 
   Widget _buildErrorView() {
-    // The list is still usable with seed data, so just show a banner.
-    // The raw exception is already logged to console; don't render it here.
+    if (_allExercises.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Symbols.download_for_offline,
+                size: 48,
+                color: AppTheme.onSurfaceVariant.withOpacity(0.7),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Exercise library not downloaded',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Connect to the server once to make exercises available offline.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _loadExercises,
+                icon: const Icon(Symbols.refresh, size: 18),
+                label: const Text('TRY AGAIN'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Cached data remains usable even if a refresh fails.
     return Column(
       children: [
         Container(
@@ -161,10 +200,10 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  "Can't connect right now — showing built-in exercises",
+                  "Can't refresh right now — showing downloaded exercises",
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppTheme.onSurfaceVariant,
-                      ),
+                    color: AppTheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               GestureDetector(
@@ -201,13 +240,13 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     }
 
     final grouped = _groupExercisesByCategory();
-    
+
     return ListView.builder(
       itemCount: grouped.keys.length,
       itemBuilder: (context, index) {
         final category = grouped.keys.elementAt(index);
         final exercises = grouped[category]!;
-        
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -221,16 +260,18 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
                 ),
               ),
             ),
-            ...exercises.map((exercise) => ListTile(
-              title: Text(exercise.name),
-              trailing: exercise.isCustom
-                  ? const Icon(Icons.person, size: 16, color: Colors.grey)
-                  : null,
-              onTap: () {
-                widget.onExerciseSelected(exercise);
-                Navigator.pop(context);
-              },
-            )),
+            ...exercises.map(
+              (exercise) => ListTile(
+                title: Text(exercise.name),
+                trailing: exercise.isCustom
+                    ? const Icon(Icons.person, size: 16, color: Colors.grey)
+                    : null,
+                onTap: () {
+                  widget.onExerciseSelected(exercise);
+                  Navigator.pop(context);
+                },
+              ),
+            ),
             if (index < grouped.keys.length - 1) const Divider(),
           ],
         );

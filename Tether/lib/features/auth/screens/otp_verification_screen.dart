@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../models/auth_models.dart';
 import '../services/auth_service.dart';
@@ -150,31 +151,9 @@ class _OtpVerificationScreenState
   }
 
   void _showResendSuccess() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: AppTheme.surfaceContainerHigh,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-        ),
-        content: Row(
-          children: [
-            const Icon(Symbols.check_circle,
-                color: AppTheme.primaryContainer, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              'New code sent',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelLarge
-                  ?.copyWith(color: AppTheme.onSurface),
-            ),
-          ],
-        ),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    showAppSnack(context, 'New code sent', tone: AppSnackTone.success);
   }
+
 
   @override
   Widget build(BuildContext context) {

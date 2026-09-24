@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../models/workout_models.dart';
 import '../services/offline_workout_service.dart';
-import 'workout_session_screen.dart';
+import 'workout_detail_screen.dart';
 
 class WorkoutHistoryScreen extends ConsumerStatefulWidget {
   const WorkoutHistoryScreen({super.key});
@@ -15,8 +16,7 @@ class WorkoutHistoryScreen extends ConsumerStatefulWidget {
       _WorkoutHistoryScreenState();
 }
 
-class _WorkoutHistoryScreenState
-    extends ConsumerState<WorkoutHistoryScreen> {
+class _WorkoutHistoryScreenState extends ConsumerState<WorkoutHistoryScreen> {
   List<WorkoutSession> _sessions = [];
   bool _isLoading = true;
   bool _hasError = false;
@@ -33,103 +33,41 @@ class _WorkoutHistoryScreenState
       _hasError = false;
     });
 
+    var hasLocalData = false;
     try {
       final workoutService = ref.read(offlineWorkoutServiceProvider);
+      final localSessions = await workoutService.listLocalSessions();
+      hasLocalData = localSessions.isNotEmpty;
+      if (mounted) {
+        setState(() {
+          _sessions = localSessions;
+          _isLoading = false;
+        });
+      }
+
+      // Show local history immediately, then replace it with the server's
+      // complete version when the device is online.
       final sessions = await workoutService.listSessions();
-      setState(() {
-        _sessions = sessions;
-        _isLoading = false;
-      });
+      if (mounted) setState(() => _sessions = sessions);
     } catch (e) {
       debugPrint('[WorkoutHistoryScreen] _loadSessions failed: $e');
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = !hasLocalData;
+        });
+      }
     }
   }
 
   Future<void> _deleteSession(String sessionId) async {
-    // Styled confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: AppTheme.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-          side: BorderSide(color: Colors.white.withOpacity(0.07)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.stackMd),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: AppTheme.errorContainer.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: AppTheme.error.withOpacity(0.3), width: 1),
-                ),
-                child: const Icon(Symbols.delete,
-                    size: 24, color: AppTheme.error),
-              ),
-              const SizedBox(height: AppTheme.stackSm),
-              Text(
-                'DELETE WORKOUT',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'This workout and all its sets will be permanently deleted.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.onSurfaceVariant,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppTheme.stackMd),
-              Row(
-                children: [
-                  Expanded(
-                    child: SecondaryButton(
-                      label: 'Cancel',
-                      onPressed: () => Navigator.pop(context, false),
-                    ),
-                  ),
-                  const SizedBox(width: AppTheme.stackSm),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context, true),
-                      child: Container(
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: AppTheme.errorContainer.withOpacity(0.3),
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.radiusFull),
-                          border: Border.all(
-                              color: AppTheme.error.withOpacity(0.4)),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'DELETE',
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                    fontSize: 14, color: AppTheme.error),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      icon: Symbols.delete,
+      tone: AppDialogTone.danger,
+      title: 'Delete workout?',
+      message: 'This workout and all its sets will be permanently deleted.',
+      confirmLabel: 'Delete',
     );
 
     if (confirmed != true || !mounted) return;
@@ -148,24 +86,13 @@ class _WorkoutHistoryScreenState
   }
 
   void _showSnack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: isError
-            ? AppTheme.errorContainer
-            : AppTheme.surfaceContainerHigh,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-        ),
-        content: Text(
-          message,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: isError ? AppTheme.error : AppTheme.onSurface,
-              ),
-        ),
-      ),
+    showAppSnack(
+      context,
+      message,
+      tone: isError ? AppSnackTone.error : AppSnackTone.success,
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -193,8 +120,7 @@ class _WorkoutHistoryScreenState
       child: ListView.separated(
         padding: EdgeInsets.zero,
         itemCount: _sessions.length,
-        separatorBuilder: (_, __) =>
-            const SizedBox(height: AppTheme.stackSm),
+        separatorBuilder: (_, __) => const SizedBox(height: AppTheme.stackSm),
         itemBuilder: (_, i) => _SessionCard(
           session: _sessions[i],
           onDelete: () => _deleteSession(_sessions[i].id),
@@ -210,40 +136,10 @@ class _WorkoutHistoryScreenState
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceContainerHigh,
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: Colors.white.withOpacity(0.1), width: 1),
-            ),
-            child: Icon(
-              Symbols.fitness_center,
-              size: 28,
-              color: AppTheme.onSurfaceVariant.withOpacity(0.5),
-            ),
-          ),
-          const SizedBox(height: AppTheme.stackMd),
-          Text(
-            'NO WORKOUTS YET',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppTheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Start your first workout to track your progress',
-            style: Theme.of(context).textTheme.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Symbols.fitness_center,
+      title: 'No workouts yet',
+      message: 'Start your first workout to track your progress',
     );
   }
 }
@@ -260,9 +156,9 @@ class _SessionCard extends StatelessWidget {
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt).inDays;
-    if (diff == 0) return 'TODAY';
-    if (diff == 1) return 'YESTERDAY';
-    if (diff < 7) return '${diff} DAYS AGO';
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return '$diff days ago';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 
@@ -273,7 +169,7 @@ class _SessionCard extends StatelessWidget {
     final d = end.difference(start);
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
-    return h > 0 ? '${h}H ${m}M' : '${m}M';
+    return h > 0 ? '${h}h ${m}m' : '${m}m';
   }
 
   @override
@@ -282,7 +178,7 @@ class _SessionCard extends StatelessWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(session: session),
+          builder: (_) => WorkoutDetailScreen(session: session),
         ),
       ),
       child: Container(
@@ -290,8 +186,7 @@ class _SessionCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppTheme.surfaceContainer,
           borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-          border:
-              Border.all(color: Colors.white.withOpacity(0.07), width: 1),
+          border: Border.all(color: Colors.white.withOpacity(0.07), width: 1),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,16 +204,16 @@ class _SessionCard extends StatelessWidget {
                   Text(
                     _formatDate(session.startedAt).split(' ')[0],
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppTheme.primaryContainer,
-                          fontSize: 8,
-                        ),
+                      color: AppTheme.primaryContainer,
+                      fontSize: 8,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   Text(
                     _formatTime(session.startedAt),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppTheme.onSurface,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: AppTheme.onSurface),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -334,16 +229,16 @@ class _SessionCard extends StatelessWidget {
                   Text(
                     _formatDate(session.startedAt),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   if (session.notes != null && session.notes!.isNotEmpty) ...[
                     const SizedBox(height: 3),
                     Text(
                       session.notes!,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.onSurfaceVariant,
-                          ),
+                        color: AppTheme.onSurfaceVariant,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -352,14 +247,16 @@ class _SessionCard extends StatelessWidget {
                   Row(
                     children: [
                       MetricChip(
-                        label: '${session.sets.length} SETS',
+                        label: '${session.sets.length} sets',
                         icon: Symbols.fitness_center,
                       ),
                       if (session.endedAt != null) ...[
                         const SizedBox(width: 6),
                         MetricChip(
                           label: _formatDuration(
-                              session.startedAt, session.endedAt!),
+                            session.startedAt,
+                            session.endedAt!,
+                          ),
                           icon: Symbols.timer,
                         ),
                       ],
@@ -378,8 +275,11 @@ class _SessionCard extends StatelessWidget {
                   color: AppTheme.errorContainer.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(AppTheme.radiusLg),
                 ),
-                child: const Icon(Symbols.delete,
-                    size: 16, color: AppTheme.error),
+                child: const Icon(
+                  Symbols.delete,
+                  size: 16,
+                  color: AppTheme.error,
+                ),
               ),
             ),
           ],

@@ -47,7 +47,6 @@ class _GymSelectionScreenState extends ConsumerState<GymSelectionScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
 
     return Scaffold(
       backgroundColor: AppTheme.surface,
@@ -76,7 +75,7 @@ class _GymSelectionScreenState extends ConsumerState<GymSelectionScreen>
                   colors: [
                     Color(0xB3121317), // 70% at top
                     Color(0xE6121317), // 90% mid
-                    Color(0xFF121317), // 100% at bottom
+                    Color(0xFF000000), // 100% at bottom
                   ],
                   stops: [0.0, 0.4, 0.75],
                 ),
@@ -92,27 +91,20 @@ class _GymSelectionScreenState extends ConsumerState<GymSelectionScreen>
                 children: [
                   const SizedBox(height: AppTheme.stackLg),
 
-                  // TETHER wordmark
+                  // Brand wordmark
                   Text(
-                    'TETHER',
+                    'Tether',
                     style: Theme.of(context).textTheme.displayLarge?.copyWith(
                           color: AppTheme.primaryContainer,
-                          letterSpacing: 0.08 * 48,
-                          shadows: [
-                            Shadow(
-                              color:
-                                  AppTheme.primaryContainer.withOpacity(0.3),
-                              blurRadius: 24,
-                            ),
-                          ],
+                          letterSpacing: -1.0,
+                          fontWeight: FontWeight.w800,
                         ),
                   ),
                   const SizedBox(height: AppTheme.unit),
                   Text(
-                    'YOUR GYM, ALWAYS WITHIN REACH.',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    'Your gym, always within reach.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppTheme.onSurfaceVariant,
-                          letterSpacing: 0.12 * 12,
                         ),
                   ),
 
@@ -155,7 +147,7 @@ class _GymSelectionScreenState extends ConsumerState<GymSelectionScreen>
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'FIND YOUR GYM',
+                                        'Find your gym',
                                         style: Theme.of(context)
                                             .textTheme
                                             .headlineLarge,

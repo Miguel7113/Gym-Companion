@@ -73,12 +73,12 @@ class PendingSessions extends Table {
   TextColumn get serverId => text().nullable()();
   TextColumn get gymId => text()();
   TextColumn get userId => text()();
+  TextColumn get templateId => text().nullable()();
   IntColumn get startedAt => integer()();
   IntColumn get endedAt => integer().nullable()();
   TextColumn get notes => text().nullable()();
   // 'pending' | 'syncing' | 'synced' | 'failed'
-  TextColumn get syncStatus =>
-      text().withDefault(const Constant('pending'))();
+  TextColumn get syncStatus => text().withDefault(const Constant('pending'))();
   TextColumn get syncError => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   IntColumn get createdAt => integer()();
@@ -112,12 +112,25 @@ class PendingSets extends Table {
   // Set by server during sync if this is a personal record
   BoolColumn get isPr => boolean().withDefault(const Constant(false))();
   // 'pending' | 'synced' | 'failed'
-  TextColumn get syncStatus =>
-      text().withDefault(const Constant('pending'))();
+  TextColumn get syncStatus => text().withDefault(const Constant('pending'))();
   IntColumn get createdAt => integer()();
 
   @override
   Set<Column> get primaryKey => {localId};
+}
+
+// ── queued_workout_shares ─────────────────────────────────────────────────────
+// Durable share intents created when a completed workout is offline or has not
+// received its server session ID yet.
+class QueuedWorkoutShares extends Table {
+  TextColumn get id => text()();
+  TextColumn get sessionId => text()();
+  TextColumn get content => text().nullable()();
+  TextColumn get imagePath => text().nullable()();
+  IntColumn get createdAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // ── recently_used_cache ───────────────────────────────────────────────────────
@@ -143,13 +156,10 @@ class RecentlyUsedCache extends Table {
     WorkoutTemplatesCache,
     PendingSessions,
     PendingSets,
+    QueuedWorkoutShares,
     RecentlyUsedCache,
   ],
-  daos: [
-    ExercisesDao,
-    SessionsDao,
-    TemplatesDao,
-  ],
+  daos: [ExercisesDao, SessionsDao, TemplatesDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -157,7 +167,7 @@ class AppDatabase extends _$AppDatabase {
   // Increment schemaVersion whenever a table definition changes.
   // Add a migration step in onUpgrade below.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -165,6 +175,15 @@ class AppDatabase extends _$AppDatabase {
     onUpgrade: (m, from, to) async {
       // Future migrations go here, e.g.:
       // if (from < 2) await m.addColumn(pendingSessions, pendingSessions.notes);
+      if (from < 2) {
+        await m.createTable(queuedWorkoutShares);
+      }
+      if (from < 3) {
+        await m.addColumn(pendingSessions, pendingSessions.templateId);
+      }
+      if (from < 4) {
+        await m.addColumn(queuedWorkoutShares, queuedWorkoutShares.imagePath);
+      }
     },
   );
 }

@@ -92,7 +92,9 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
           final hasPassword = meta['password_set'] == true;
 
           // Sync token to API client for NestJS calls
-          ref.read(apiClientProvider).setAccessToken(session.accessToken);
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            await ref.read(apiClientProvider).setAccessToken(session.accessToken);
+          });
 
           // Session exists but no gym claims yet — magic link first-signup path
           if (!hasGymClaims && !_isClaiming) {
@@ -196,19 +198,12 @@ class _SplashScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'TETHER',
-              style: TextStyle(
-                color: AppTheme.primaryContainer,
-                fontSize: 40,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 6,
-                shadows: [
-                  Shadow(
-                    color: AppTheme.primaryContainer.withOpacity(0.4),
-                    blurRadius: 20,
+              'Tether',
+              style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    color: AppTheme.primaryContainer,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
                   ),
-                ],
-              ),
             ),
             const SizedBox(height: 32),
             SizedBox(
@@ -289,8 +284,8 @@ class _ClaimErrorScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                child: const Text('RETRY',
-                  style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1)),
+                child: const Text('Retry',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
               ),
               const SizedBox(height: 12),
               TextButton(

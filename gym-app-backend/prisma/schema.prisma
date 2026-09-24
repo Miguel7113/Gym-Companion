@@ -12,6 +12,7 @@ model Gym {
   name             String
   logoUrl          String?  @map("logo_url")
   primaryColor     String?  @map("primary_color")
+  timezone         String   @default("UTC")
   contactEmail     String?  @map("contact_email")
   subscriptionTier String   @default("trial") @map("subscription_tier")
   isActive         Boolean  @default(true) @map("is_active")
@@ -25,6 +26,10 @@ model Gym {
   achievements     UserAchievement[]
   posts            Post[]
   workoutTemplates WorkoutTemplate[]
+  coachCertifications CoachCertification[]
+  notices          GymNotice[]
+  buddyLinks       GymBuddyLink[]
+  appNotifications AppNotification[]
 
   @@map("gyms")
 }
@@ -38,7 +43,8 @@ model GymStaff {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
 
-  gym Gym @relation(fields: [gymId], references: [id])
+  gym     Gym         @relation(fields: [gymId], references: [id])
+  notices GymNotice[]
 
   @@index([authProviderId])
   @@map("gym_staff")
@@ -92,8 +98,42 @@ model User {
   savedPrograms    SavedProgram[]
   recentlyUsed     RecentlyUsedExercise[]
   workoutTemplates WorkoutTemplate[]      @relation("TemplateCreator")
+  certificationsGiven CoachCertification[] @relation("CertificationCoach")
+  noticesAuthored     GymNotice[]          @relation("NoticeAuthor")
+  sessionParticipations WorkoutSessionParticipant[]
+  buddyLinksAsA       GymBuddyLink[]       @relation("BuddyUserA")
+  buddyLinksAsB       GymBuddyLink[]       @relation("BuddyUserB")
+  buddyRequestsSent   GymBuddyLink[]       @relation("BuddyRequester")
+  appNotifications    AppNotification[]
 
   @@map("users")
+}
+
+// ============================================================
+// Gym notices (Home + Notices screens — not social feed)
+// ============================================================
+
+model GymNotice {
+  id            String    @id @default(uuid())
+  gymId         String    @map("gym_id")
+  authorUserId  String?   @map("author_user_id")
+  authorStaffId String?   @map("author_staff_id")
+  title         String
+  body          String
+  tag           String
+  isPinned      Boolean   @default(false) @map("is_pinned")
+  publishedAt   DateTime  @default(now()) @map("published_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  gym         Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  authorUser  User?     @relation("NoticeAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  authorStaff GymStaff? @relation(fields: [authorStaffId], references: [id], onDelete: SetNull)
+
+  @@index([gymId, deletedAt, isPinned, publishedAt])
+  @@index([gymId])
+  @@map("gym_notices")
 }
 
 model Exercise {
@@ -145,6 +185,7 @@ model WorkoutSession {
   id        String    @id @default(uuid())
   userId    String    @map("user_id")
   gymId     String    @map("gym_id")
+  templateId String?  @map("template_id")
   startedAt DateTime  @map("started_at")
   endedAt   DateTime? @map("ended_at")
   notes     String?
@@ -154,10 +195,28 @@ model WorkoutSession {
 
   user User         @relation(fields: [userId], references: [id])
   gym  Gym          @relation(fields: [gymId], references: [id])
+  template WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   sets WorkoutSet[]
+  sharedPost Post?
+  participants WorkoutSessionParticipant[]
 
   @@index([userId])
+  @@index([templateId])
   @@map("workout_sessions")
+}
+
+model WorkoutSessionParticipant {
+  sessionId String   @map("session_id")
+  userId    String   @map("user_id")
+  role      String   @default("buddy") // host | buddy
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  session WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId])
+  @@index([userId])
+  @@map("workout_session_participants")
 }
 
 model WorkoutSet {
@@ -248,8 +307,10 @@ model Post {
   id              String   @id @default(uuid())
   gymId           String   @map("gym_id")
   userId          String   @map("user_id")
+  workoutSessionId String?  @unique @map("workout_session_id")
   content         String?
   imageUrl        String?  @map("image_url")
+  imagePath       String?  @map("image_path")
   achievementType String?  @map("achievement_type")
   achievementId   String?  @map("achievement_id")
   isFlagged       Boolean  @default(false) @map("is_flagged")
@@ -259,14 +320,32 @@ model Post {
 
   gym         Gym              @relation(fields: [gymId], references: [id])
   user        User             @relation(fields: [userId], references: [id])
+  workoutSession WorkoutSession? @relation(fields: [workoutSessionId], references: [id])
   achievement UserAchievement? @relation(fields: [achievementId], references: [id])
   likes       PostLike[]
   comments    PostComment[]
   flags       PostFlag[]
+  certification CoachCertification?
 
   @@index([gymId])
   @@index([userId])
   @@map("posts")
+}
+
+model CoachCertification {
+  id          String   @id @default(uuid())
+  postId      String   @unique @map("post_id")
+  coachUserId String   @map("coach_user_id")
+  gymId       String   @map("gym_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  post  Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  coach User @relation("CertificationCoach", fields: [coachUserId], references: [id], onDelete: Cascade)
+  gym   Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@index([gymId])
+  @@index([coachUserId])
+  @@map("coach_certifications")
 }
 
 model PostLike {
@@ -335,6 +414,7 @@ model WorkoutTemplate {
   gym       Gym?                      @relation(fields: [gymId], references: [id])
   createdBy User?                     @relation("TemplateCreator", fields: [createdByUserId], references: [id])
   exercises WorkoutTemplateExercise[]
+  sessions  WorkoutSession[]
   savedBy   SavedProgram[]
 
   @@index([gymId])
@@ -403,4 +483,49 @@ model RecentlyUsedExercise {
   @@unique([userId, exerciseId])
   @@index([userId, usedAt(sort: Desc)])
   @@map("recently_used_exercises")
+}
+
+// ============================================================
+// Gym buddies + in-app notifications
+// ============================================================
+
+model GymBuddyLink {
+  id                String   @id @default(uuid())
+  gymId             String   @map("gym_id")
+  userAId           String   @map("user_a_id")
+  userBId           String   @map("user_b_id")
+  requestedByUserId String   @map("requested_by_user_id")
+  status            String   @default("pending") // pending | active | declined | cancelled
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  gym         Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  userA       User @relation("BuddyUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB       User @relation("BuddyUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  requestedBy User @relation("BuddyRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([gymId, userAId, userBId])
+  @@index([gymId, status])
+  @@index([userAId])
+  @@index([userBId])
+  @@map("gym_buddy_links")
+}
+
+model AppNotification {
+  id        String    @id @default(uuid())
+  gymId     String    @map("gym_id")
+  userId    String    @map("user_id")
+  type      String
+  title     String
+  body      String
+  payload   Json?     @map("payload_json")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([gymId])
+  @@map("app_notifications")
 }

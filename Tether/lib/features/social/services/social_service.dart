@@ -8,8 +8,10 @@ class SocialService {
   SocialService(this._api);
 
   Future<List<FeedPost>> getFeed({int limit = 20, int offset = 0}) async {
-    final response = await _api.get('/social/posts',
-        queryParameters: {'limit': limit, 'offset': offset});
+    final response = await _api.get(
+      '/social/posts',
+      queryParameters: {'limit': limit, 'offset': offset},
+    );
     return (response.data as List)
         .map((j) => FeedPost.fromJson(j as Map<String, dynamic>))
         .toList();
@@ -32,8 +34,10 @@ class SocialService {
   }
 
   Future<FeedComment> createComment(String postId, String content) async {
-    final response = await _api.post('/social/posts/$postId/comments',
-        data: {'content': content});
+    final response = await _api.post(
+      '/social/posts/$postId/comments',
+      data: {'content': content},
+    );
     return FeedComment.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -46,26 +50,38 @@ class SocialService {
     required String content,
     String? imageUrl,
   }) async {
-    final response = await _api.post('/social/posts', data: {
-      'type': type,
-      'content': content,
-      if (imageUrl != null) 'imageUrl': imageUrl,
-    });
+    final response = await _api.post(
+      '/social/posts',
+      data: {
+        'type': type,
+        'content': content,
+        if (imageUrl != null) 'imageUrl': imageUrl,
+      },
+    );
     return FeedPost.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// Share a PR achievement to the feed (pre-filled content)
-  Future<FeedPost> sharePrToFeed({
-    required String exerciseName,
-    required String value,
-    required String imageUrl,
+  /// Share a completed workout to the member's gym feed.
+  Future<FeedPost> shareWorkout({
+    required String sessionId,
+    String? content,
+    String? imagePath,
   }) async {
-    final response = await _api.post('/social/posts', data: {
-      'type': 'pr',
-      'content': 'New PR — $value on $exerciseName! 💪',
-      'imageUrl': imageUrl,
-    });
+    final response = await _api.post(
+      '/social/workout-sessions/$sessionId/share',
+      data: {
+        if (content != null && content.trim().isNotEmpty)
+          'content': content.trim(),
+        if (imagePath != null) 'imagePath': imagePath,
+      },
+    );
     return FeedPost.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<CoachCertification> certifyPost(String postId) async {
+    final response = await _api.post('/social/posts/$postId/certify');
+    final data = response.data as Map<String, dynamic>;
+    return CoachCertification.fromJson(data);
   }
 }
 

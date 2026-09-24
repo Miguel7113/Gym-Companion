@@ -25,78 +25,113 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
   Future<String> createSession({
     required String gymId,
     required String userId,
+    String? templateId,
     String? notes,
   }) async {
     final localId = _uuid.v4();
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    await into(pendingSessions).insert(PendingSessionsCompanion.insert(
-      localId: localId,
-      gymId: gymId,
-      userId: userId,
-      startedAt: now,
-      createdAt: now,
-      notes: Value(notes),
-      syncStatus: const Value('pending'),
-    ));
+    await into(pendingSessions).insert(
+      PendingSessionsCompanion.insert(
+        localId: localId,
+        gymId: gymId,
+        userId: userId,
+        templateId: Value(templateId),
+        startedAt: now,
+        createdAt: now,
+        notes: Value(notes),
+        syncStatus: const Value('pending'),
+      ),
+    );
 
     return localId;
   }
 
   Future<void> endSession(String localId) async {
-    await (update(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .write(PendingSessionsCompanion(
-      endedAt: Value(DateTime.now().millisecondsSinceEpoch),
-    ));
+    await (update(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).write(
+      PendingSessionsCompanion(
+        endedAt: Value(DateTime.now().millisecondsSinceEpoch),
+        syncStatus: const Value('pending'),
+      ),
+    );
   }
 
   Future<void> updateSessionNotes(String localId, String? notes) async {
-    await (update(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .write(PendingSessionsCompanion(notes: Value(notes)));
+    await (update(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).write(
+      PendingSessionsCompanion(
+        notes: Value(notes),
+        syncStatus: const Value('pending'),
+      ),
+    );
   }
 
   Future<void> markSyncing(String localId) async {
-    await (update(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .write(const PendingSessionsCompanion(
-      syncStatus: Value('syncing'),
-    ));
+    await (update(pendingSessions)..where((t) => t.localId.equals(localId)))
+        .write(const PendingSessionsCompanion(syncStatus: Value('syncing')));
   }
 
   Future<void> markSessionSynced(String localId, String serverId) async {
-    await (update(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .write(PendingSessionsCompanion(
-      serverId: Value(serverId),
-      syncStatus: const Value('synced'),
-      syncError: const Value(null),
-    ));
+    await (update(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).write(
+      PendingSessionsCompanion(
+        serverId: Value(serverId),
+        syncStatus: const Value('synced'),
+        syncError: const Value(null),
+      ),
+    );
   }
 
   Future<void> markSessionFailed(String localId, String error) async {
-    final current = await (select(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .getSingleOrNull();
+    final current = await (select(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).getSingleOrNull();
     final retries = (current?.retryCount ?? 0) + 1;
 
-    await (update(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .write(PendingSessionsCompanion(
-      syncStatus: const Value('failed'),
-      syncError: Value(error),
-      retryCount: Value(retries),
-    ));
+    await (update(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).write(
+      PendingSessionsCompanion(
+        syncStatus: const Value('failed'),
+        syncError: Value(error),
+        retryCount: Value(retries),
+      ),
+    );
   }
 
   /// Returns sessions that still need to sync (max 3 attempts).
   Future<List<PendingSession>> getPendingForSync() async {
-    return (select(pendingSessions)
-          ..where((t) =>
-              t.syncStatus.isIn(['pending', 'failed']) &
-              t.retryCount.isSmallerThanValue(3)))
-        .get();
+    final sessions =
+        await (select(pendingSessions)..where(
+              (t) =>
+                  t.syncStatus.isIn(['pending', 'failed']) &
+                  t.retryCount.isSmallerThanValue(3),
+            ))
+            .get();
+
+    // A session can already be synced while sets are still being logged.
+    // Include those parents so the sync service can upload their new sets.
+    final pendingSetRows = await (select(
+      pendingSets,
+    )..where((t) => t.syncStatus.equals('pending'))).get();
+    final syncedParentIds = pendingSetRows
+        .map((set) => set.sessionLocalId)
+        .where((id) => !sessions.any((session) => session.localId == id))
+        .toSet();
+    if (syncedParentIds.isEmpty) return sessions;
+
+    final syncedParents =
+        await (select(pendingSessions)..where(
+              (t) =>
+                  t.localId.isIn(syncedParentIds) &
+                  t.syncStatus.isNotIn(['syncing']),
+            ))
+            .get();
+    return [...sessions, ...syncedParents];
   }
 
   /// Active session = no endedAt set.
@@ -126,29 +161,33 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
     final countExpr = pendingSessions.localId.count();
     final query = selectOnly(pendingSessions)
       ..addColumns([countExpr])
-      ..where(pendingSessions.userId.equals(userId) &
-          pendingSessions.endedAt.isNotNull() &
-          pendingSessions.startedAt.isBiggerOrEqualValue(weekAgo));
+      ..where(
+        pendingSessions.userId.equals(userId) &
+            pendingSessions.endedAt.isNotNull() &
+            pendingSessions.startedAt.isBiggerOrEqualValue(weekAgo),
+      );
     final row = await query.getSingle();
     return row.read(countExpr) ?? 0;
   }
 
   Future<int> getStreak(String userId) async {
-    final sessions = await (select(pendingSessions)
-          ..where((t) => t.userId.equals(userId) & t.endedAt.isNotNull())
-          ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]))
-        .get();
+    final sessions =
+        await (select(pendingSessions)
+              ..where((t) => t.userId.equals(userId) & t.endedAt.isNotNull())
+              ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]))
+            .get();
 
     if (sessions.isEmpty) return 0;
 
-    final dates = sessions
-        .map((s) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(s.startedAt);
-          return DateTime(dt.year, dt.month, dt.day);
-        })
-        .toSet()
-        .toList()
-      ..sort((a, b) => b.compareTo(a));
+    final dates =
+        sessions
+            .map((s) {
+              final dt = DateTime.fromMillisecondsSinceEpoch(s.startedAt);
+              return DateTime(dt.year, dt.month, dt.day);
+            })
+            .toSet()
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
 
     int streak = 0;
     DateTime check = DateTime.now();
@@ -171,21 +210,19 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
     final query = selectOnly(pendingSessions)
       ..addColumns([countExpr])
       ..where(pendingSessions.syncStatus.isIn(['pending', 'failed']));
-    return query
-        .watch()
-        .map((rows) => rows.first.read(countExpr) ?? 0);
+    return query.watch().map((rows) => rows.first.read(countExpr) ?? 0);
   }
 
   Future<PendingSession?> getSessionByLocalId(String localId) async {
-    return (select(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .getSingleOrNull();
+    return (select(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).getSingleOrNull();
   }
 
   Future<PendingSession?> getSessionByServerId(String serverId) async {
-    return (select(pendingSessions)
-          ..where((t) => t.serverId.equals(serverId)))
-        .getSingleOrNull();
+    return (select(
+      pendingSessions,
+    )..where((t) => t.serverId.equals(serverId))).getSingleOrNull();
   }
 
   /// Resolves a session id (local or server) to the local primary key.
@@ -198,20 +235,22 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> deleteSession(String sessionId) async {
     final localId = await resolveLocalId(sessionId) ?? sessionId;
-    await (delete(pendingSets)
-          ..where((t) => t.sessionLocalId.equals(localId)))
-        .go();
-    await (delete(pendingSessions)
-          ..where((t) => t.localId.equals(localId)))
-        .go();
+    await (delete(
+      pendingSets,
+    )..where((t) => t.sessionLocalId.equals(localId))).go();
+    await (delete(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).go();
   }
 
   Future<int> getTotalEndedSessionCount(String userId) async {
     final countExpr = pendingSessions.localId.count();
     final query = selectOnly(pendingSessions)
       ..addColumns([countExpr])
-      ..where(pendingSessions.userId.equals(userId) &
-          pendingSessions.endedAt.isNotNull());
+      ..where(
+        pendingSessions.userId.equals(userId) &
+            pendingSessions.endedAt.isNotNull(),
+      );
     final row = await query.getSingle();
     return row.read(countExpr) ?? 0;
   }
@@ -220,12 +259,14 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
     final weekAgo = DateTime.now()
         .subtract(const Duration(days: 7))
         .millisecondsSinceEpoch;
-    final sessions = await (select(pendingSessions)
-          ..where((t) =>
-              t.userId.equals(userId) &
-              t.endedAt.isNotNull() &
-              t.startedAt.isBiggerOrEqualValue(weekAgo)))
-        .get();
+    final sessions =
+        await (select(pendingSessions)..where(
+              (t) =>
+                  t.userId.equals(userId) &
+                  t.endedAt.isNotNull() &
+                  t.startedAt.isBiggerOrEqualValue(weekAgo),
+            ))
+            .get();
     if (sessions.isEmpty) return 0;
     final localIds = sessions.map((s) => s.localId).toList();
     final countExpr = pendingSets.localId.count();
@@ -238,12 +279,15 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
 
   // ── Converters ─────────────────────────────────────────────────────────────
 
-  WorkoutSession toWorkoutSession(PendingSession row,
-      [List<WorkoutSet> sets = const []]) {
+  WorkoutSession toWorkoutSession(
+    PendingSession row, [
+    List<WorkoutSet> sets = const [],
+  ]) {
     return WorkoutSession(
       id: row.serverId ?? row.localId,
       userId: row.userId,
       gymId: row.gymId,
+      templateId: row.templateId,
       startedAt: DateTime.fromMillisecondsSinceEpoch(row.startedAt),
       endedAt: row.endedAt != null
           ? DateTime.fromMillisecondsSinceEpoch(row.endedAt!)
@@ -269,22 +313,24 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
     double? speedKph,
   }) async {
     final localId = _uuid.v4();
-    await into(pendingSets).insert(PendingSetsCompanion.insert(
-      localId: localId,
-      sessionLocalId: sessionLocalId,
-      exerciseId: exerciseId,
-      sessionServerId: Value(sessionServerId),
-      setNumber: Value(setNumber),
-      reps: Value(reps),
-      weightKg: Value(weightKg),
-      rpe: Value(rpe),
-      assistKg: Value(assistKg),
-      durationSecs: Value(durationSecs),
-      distanceM: Value(distanceM),
-      speedKph: Value(speedKph),
-      createdAt: DateTime.now().millisecondsSinceEpoch,
-      syncStatus: const Value('pending'),
-    ));
+    await into(pendingSets).insert(
+      PendingSetsCompanion.insert(
+        localId: localId,
+        sessionLocalId: sessionLocalId,
+        exerciseId: exerciseId,
+        sessionServerId: Value(sessionServerId),
+        setNumber: Value(setNumber),
+        reps: Value(reps),
+        weightKg: Value(weightKg),
+        rpe: Value(rpe),
+        assistKg: Value(assistKg),
+        durationSecs: Value(durationSecs),
+        distanceM: Value(distanceM),
+        speedKph: Value(speedKph),
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+        syncStatus: const Value('pending'),
+      ),
+    );
     return localId;
   }
 
@@ -296,36 +342,42 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
   }
 
   Future<List<PendingSet>> getPendingSetsForSession(
-      String sessionLocalId) async {
-    return (select(pendingSets)
-          ..where((t) =>
+    String sessionLocalId,
+  ) async {
+    return (select(pendingSets)..where(
+          (t) =>
               t.sessionLocalId.equals(sessionLocalId) &
-              t.syncStatus.equals('pending')))
+              t.syncStatus.equals('pending'),
+        ))
         .get();
   }
 
   Future<void> markSetSynced(String localId, String serverId) async {
-    await (update(pendingSets)..where((t) => t.localId.equals(localId)))
-        .write(PendingSetsCompanion(
-      serverId: Value(serverId),
-      syncStatus: const Value('synced'),
-    ));
+    await (update(pendingSets)..where((t) => t.localId.equals(localId))).write(
+      PendingSetsCompanion(
+        serverId: Value(serverId),
+        syncStatus: const Value('synced'),
+      ),
+    );
   }
 
   Future<void> updateSetsServerSessionId(
-      String sessionLocalId, String sessionServerId) async {
+    String sessionLocalId,
+    String sessionServerId,
+  ) async {
     await (update(pendingSets)
           ..where((t) => t.sessionLocalId.equals(sessionLocalId)))
-        .write(PendingSetsCompanion(
-      sessionServerId: Value(sessionServerId),
-    ));
+        .write(PendingSetsCompanion(sessionServerId: Value(sessionServerId)));
   }
 
   Future<void> deleteSet(String localId) async {
-    await (delete(pendingSets)..where((t) => t.localId.equals(localId))).go();
+    await (delete(
+          pendingSets,
+        )..where((t) => t.localId.equals(localId) | t.serverId.equals(localId)))
+        .go();
   }
 
-  WorkoutSet toWorkoutSet(PendingSet row) {
+  WorkoutSet toWorkoutSet(PendingSet row, [Exercise? exercise]) {
     return WorkoutSet(
       id: row.serverId ?? row.localId,
       sessionId: row.sessionServerId ?? row.sessionLocalId,
@@ -338,6 +390,7 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
       durationSecs: row.durationSecs,
       distanceM: row.distanceM,
       speedKph: row.speedKph,
+      exercise: exercise,
     );
   }
 }

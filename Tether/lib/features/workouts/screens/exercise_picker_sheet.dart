@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/media_catalog.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/sync/sync_service.dart';
 import '../models/workout_models.dart';
@@ -82,6 +83,14 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
   bool _loadingExercises = false;
   bool _loadingMeta = false;
 
+  String _titleCase(String value) {
+    if (value.isEmpty) return value;
+    return value
+        .split(' ')
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -118,29 +127,41 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     }
 
     await Future.wait([
-      svc.listBodyParts().then((parts) {
-        if (mounted) setState(() => _bodyParts = parts);
-      }).catchError((e) {
-        debugPrint('[ExercisePicker] listBodyParts failed: $e');
-      }),
+      svc
+          .listBodyParts()
+          .then((parts) {
+            if (mounted) setState(() => _bodyParts = parts);
+          })
+          .catchError((e) {
+            debugPrint('[ExercisePicker] listBodyParts failed: $e');
+          }),
 
-      svc.listEquipments().then((equips) {
-        if (mounted) setState(() => _allEquipments = equips);
-      }).catchError((e) {
-        debugPrint('[ExercisePicker] listEquipments failed: $e');
-      }),
+      svc
+          .listEquipments()
+          .then((equips) {
+            if (mounted) setState(() => _allEquipments = equips);
+          })
+          .catchError((e) {
+            debugPrint('[ExercisePicker] listEquipments failed: $e');
+          }),
 
-      svc.getRecentlyUsed(limit: 8).then((recent) {
-        if (mounted) setState(() => _recentlyUsed = recent);
-      }).catchError((e) {
-        debugPrint('[ExercisePicker] getRecentlyUsed failed: $e');
-      }),
+      svc
+          .getRecentlyUsed(limit: 8)
+          .then((recent) {
+            if (mounted) setState(() => _recentlyUsed = recent);
+          })
+          .catchError((e) {
+            debugPrint('[ExercisePicker] getRecentlyUsed failed: $e');
+          }),
 
-      svc.getSavedExercises().then((saved) {
-        if (mounted) setState(() => _saved = saved);
-      }).catchError((e) {
-        debugPrint('[ExercisePicker] getSavedExercises failed: $e');
-      }),
+      svc
+          .getSavedExercises()
+          .then((saved) {
+            if (mounted) setState(() => _saved = saved);
+          })
+          .catchError((e) {
+            debugPrint('[ExercisePicker] getSavedExercises failed: $e');
+          }),
     ]);
 
     if (mounted) setState(() => _loadingMeta = false);
@@ -192,7 +213,8 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
   bool get _isDrilling =>
       _selectedBodyPart != null ||
       _selectedEquipment.isNotEmpty ||
-      _searchCtrl.text.isNotEmpty;
+      _searchCtrl.text.isNotEmpty ||
+      widget.initialCategory != null;
 
   void _addExercise(Exercise ex) {
     HapticFeedback.lightImpact();
@@ -230,7 +252,9 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
               ..addAll(newSelection);
           });
           // Schedule fetch after setState completes
-          WidgetsBinding.instance.addPostFrameCallback((_) => _fetchExercises());
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _fetchExercises(),
+          );
         },
       ),
     );
@@ -245,7 +269,7 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
       height: h - topPad - 24,
       decoration: const BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXxl)),
       ),
       child: Column(
         children: [
@@ -253,7 +277,8 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
           Center(
             child: Container(
               margin: const EdgeInsets.only(top: 10, bottom: 6),
-              width: 36, height: 4,
+              width: 36,
+              height: 4,
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(2),
@@ -276,7 +301,9 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
                       decoration: BoxDecoration(
                         color: AppTheme.surfaceContainerHigh,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.1)),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                        ),
                       ),
                       child: const Icon(Symbols.arrow_back, size: 16),
                     ),
@@ -284,10 +311,14 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
                 Expanded(
                   child: Text(
                     _selectedBodyPart != null
-                        ? _selectedBodyPart!.toUpperCase()
-                        : 'ADD EXERCISE',
-                    style: Theme.of(context).textTheme.headlineMedium
-                        ?.copyWith(fontSize: 20)),
+                        ? _titleCase(_selectedBodyPart!)
+                        : widget.initialCategory != null
+                        ? _titleCase(widget.initialCategory!)
+                        : 'Add exercise',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
@@ -328,13 +359,17 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
                             : 'Search all exercises...',
                         hintStyle: Theme.of(context).textTheme.bodyMedium
                             ?.copyWith(color: AppTheme.onSurfaceVariant),
-                        prefixIcon: const Icon(Symbols.search, size: 18,
-                            color: AppTheme.onSurfaceVariant),
+                        prefixIcon: const Icon(
+                          Symbols.search,
+                          size: 18,
+                          color: AppTheme.onSurfaceVariant,
+                        ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                        ),
                         isDense: true,
                       ),
                     ),
@@ -344,7 +379,8 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
                 GestureDetector(
                   onTap: _showEquipmentFilter,
                   child: Container(
-                    height: 44, width: 44,
+                    height: 44,
+                    width: 44,
                     decoration: BoxDecoration(
                       color: _selectedEquipment.isNotEmpty
                           ? AppTheme.primaryContainer.withOpacity(0.12)
@@ -359,15 +395,20 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        Icon(Symbols.tune, size: 18,
+                        Icon(
+                          Symbols.tune,
+                          size: 18,
                           color: _selectedEquipment.isNotEmpty
                               ? AppTheme.primaryContainer
-                              : AppTheme.onSurfaceVariant),
+                              : AppTheme.onSurfaceVariant,
+                        ),
                         if (_selectedEquipment.isNotEmpty)
                           Positioned(
-                            top: 7, right: 7,
+                            top: 7,
+                            right: 7,
                             child: Container(
-                              width: 8, height: 8,
+                              width: 8,
+                              height: 8,
                               decoration: const BoxDecoration(
                                 color: AppTheme.primaryContainer,
                                 shape: BoxShape.circle,
@@ -386,7 +427,7 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
 
           // ── Content — body part grid OR exercise list ────────────────
           Expanded(
-            child: _isDrilling
+            child: _isDrilling || _bodyParts.isEmpty
                 ? _buildExerciseList()
                 : _buildBodyPartGrid(),
           ),
@@ -408,14 +449,15 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
             const SizedBox(height: 16),
             Text(
               'Loading exercises...',
-              style: TextStyle(
-                color: AppTheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: AppTheme.onSurfaceVariant, fontSize: 12),
             ),
           ],
         ),
       );
+    }
+
+    if (_bodyParts.isEmpty) {
+      return _buildLibraryUnavailable();
     }
 
     return GridView.builder(
@@ -440,27 +482,42 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryContainer.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: AppTheme.primaryContainer.withOpacity(0.25)),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    AppMedia.bodyPart(part),
+                    width: 42,
+                    height: 42,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 42,
+                      height: 42,
+                      color: AppTheme.surfaceContainerHigh,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Symbols.fitness_center,
+                        size: 16,
+                        color: AppTheme.primaryContainer,
+                      ),
+                    ),
                   ),
-                  child: const Icon(Symbols.fitness_center,
-                      size: 14, color: AppTheme.primaryContainer),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(part.toUpperCase(),
-                    style: Theme.of(context).textTheme.labelMedium
-                        ?.copyWith(color: AppTheme.onSurface),
+                  child: Text(
+                    _titleCase(part),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppTheme.onSurface,
+                    ),
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                const Icon(Symbols.chevron_right, size: 14,
-                    color: AppTheme.onSurfaceVariant),
+                const Icon(
+                  Symbols.chevron_right,
+                  size: 14,
+                  color: AppTheme.onSurfaceVariant,
+                ),
               ],
             ),
           ),
@@ -471,13 +528,23 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
 
   Widget _buildExerciseList() {
     if (_loadingExercises) {
-      return const Center(child: CircularProgressIndicator(
-        strokeWidth: 2,
-        valueColor: AlwaysStoppedAnimation(AppTheme.primaryContainer),
-      ));
+      return const Center(
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation(AppTheme.primaryContainer),
+        ),
+      );
     }
 
     final items = _listItems;
+    if (items.isEmpty) {
+      return _buildLibraryUnavailable(
+        message: _searchCtrl.text.isNotEmpty
+            ? 'No matching exercises'
+            : 'Exercise library not downloaded',
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: items.length,
@@ -496,6 +563,49 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     );
   }
 
+  Widget _buildLibraryUnavailable({
+    String message = 'Exercise library not downloaded',
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Symbols.download_for_offline,
+              size: 44,
+              color: AppTheme.onSurfaceVariant.withOpacity(0.7),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              message,
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Connect once to download the exercise library for offline use.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () {
+                _loadMeta();
+                _fetchExercises();
+              },
+              icon: const Icon(Symbols.refresh, size: 18),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Builds the flat list including section headers
   List<dynamic> get _listItems {
     final items = <dynamic>[];
@@ -511,7 +621,7 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
             .take(3)
             .toList();
         if (relevant.isNotEmpty) {
-          items.add(const _SectionHeader('RECENTLY USED'));
+          items.add(const _SectionHeader('Recently used'));
           items.addAll(relevant);
         }
       }
@@ -521,24 +631,25 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
             .take(3)
             .toList();
         if (relevant.isNotEmpty) {
-          items.add(const _SectionHeader('SAVED'));
+          items.add(const _SectionHeader('Saved'));
           items.addAll(relevant);
         }
       }
       if (items.isNotEmpty) {
-        items.add(const _SectionHeader('ALL'));
+        items.add(const _SectionHeader('All'));
       }
     }
 
     // When searching across all body parts (no body part selected)
-    if (_selectedBodyPart == null && _searchCtrl.text.isEmpty &&
+    if (_selectedBodyPart == null &&
+        _searchCtrl.text.isEmpty &&
         _selectedEquipment.isEmpty) {
       if (_recentlyUsed.isNotEmpty) {
-        items.add(const _SectionHeader('RECENTLY USED'));
+        items.add(const _SectionHeader('Recently used'));
         items.addAll(_recentlyUsed.take(5));
       }
       if (_saved.isNotEmpty) {
-        items.add(const _SectionHeader('SAVED'));
+        items.add(const _SectionHeader('Saved'));
         items.addAll(_saved.take(5));
       }
     }
@@ -571,7 +682,8 @@ class _ExerciseListTile extends StatelessWidget {
           children: [
             // GIF thumbnail or placeholder
             Container(
-              width: 44, height: 44,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: AppTheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(AppTheme.radiusLg),
@@ -584,13 +696,17 @@ class _ExerciseListTile extends StatelessWidget {
                         exercise.gifUrl!,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => const Icon(
-                            Symbols.fitness_center,
-                            size: 20,
-                            color: AppTheme.onSurfaceVariant),
+                          Symbols.fitness_center,
+                          size: 20,
+                          color: AppTheme.onSurfaceVariant,
+                        ),
                       ),
                     )
-                  : const Icon(Symbols.fitness_center, size: 20,
-                      color: AppTheme.onSurfaceVariant),
+                  : const Icon(
+                      Symbols.fitness_center,
+                      size: 20,
+                      color: AppTheme.onSurfaceVariant,
+                    ),
             ),
             const SizedBox(width: 12),
             // Name + category
@@ -598,10 +714,14 @@ class _ExerciseListTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(exercise.name,
-                    style: Theme.of(context).textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(
+                    exercise.name,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   if (exercise.category != null)
                     Text(
                       [
@@ -609,8 +729,9 @@ class _ExerciseListTile extends StatelessWidget {
                         if (exercise.bodyParts.isNotEmpty)
                           exercise.bodyParts.first,
                       ].join(' · '),
-                      style: Theme.of(context).textTheme.labelSmall
-                          ?.copyWith(color: AppTheme.onSurfaceVariant),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppTheme.onSurfaceVariant,
+                      ),
                     ),
                 ],
               ),
@@ -619,15 +740,20 @@ class _ExerciseListTile extends StatelessWidget {
             GestureDetector(
               onTap: onAdd,
               child: Container(
-                width: 32, height: 32,
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
                   color: AppTheme.primaryContainer.withOpacity(0.12),
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: AppTheme.primaryContainer.withOpacity(0.35)),
+                    color: AppTheme.primaryContainer.withOpacity(0.35),
+                  ),
                 ),
-                child: const Icon(Symbols.add, size: 16,
-                    color: AppTheme.primaryContainer),
+                child: const Icon(
+                  Symbols.add,
+                  size: 16,
+                  color: AppTheme.primaryContainer,
+                ),
               ),
             ),
           ],
@@ -650,9 +776,12 @@ class _SectionHeaderTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-      child: Text(label,
-        style: Theme.of(context).textTheme.labelLarge
-            ?.copyWith(color: AppTheme.onSurfaceVariant)),
+      child: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.labelLarge?.copyWith(color: AppTheme.onSurfaceVariant),
+      ),
     );
   }
 }
@@ -691,7 +820,7 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXxl)),
       ),
       padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 16),
       child: Column(
@@ -700,7 +829,9 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
           // Drag handle
           Center(
             child: Container(
-              width: 36, height: 4, margin: const EdgeInsets.only(bottom: 12),
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(2),
@@ -711,14 +842,21 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Row(
               children: [
-                Expanded(child: Text('FILTER BY EQUIPMENT',
-                  style: Theme.of(context).textTheme.labelLarge)),
+                Expanded(
+                  child: Text(
+                    'Filter by equipment',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
                 if (_local.isNotEmpty)
                   GestureDetector(
                     onTap: () => setState(() => _local.clear()),
-                    child: Text('CLEAR',
-                      style: Theme.of(context).textTheme.labelSmall
-                          ?.copyWith(color: AppTheme.primaryContainer)),
+                    child: Text(
+                      'Clear',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppTheme.primaryContainer,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -737,12 +875,16 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
                   value: checked,
                   onChanged: (v) {
                     setState(() {
-                      if (v == true) _local.add(eq);
-                      else _local.remove(eq);
+                      if (v == true)
+                        _local.add(eq);
+                      else
+                        _local.remove(eq);
                     });
                   },
-                  title: Text(eq,
-                    style: Theme.of(context).textTheme.bodyMedium),
+                  title: Text(
+                    eq,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                   activeColor: AppTheme.primaryContainer,
                   checkColor: AppTheme.onPrimaryFixed,
                   controlAffinity: ListTileControlAffinity.leading,
@@ -755,9 +897,7 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: PrimaryButton(
-              label: _local.isEmpty
-                  ? 'Show All'
-                  : 'Apply (${_local.length})',
+              label: _local.isEmpty ? 'Show All' : 'Apply (${_local.length})',
               onPressed: () {
                 widget.onApply(Set<String>.from(_local));
                 Navigator.pop(context);

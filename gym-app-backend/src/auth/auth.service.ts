@@ -1,4 +1,10 @@
-import { Injectable, ConflictException, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { RosterService } from '../roster/roster.service';
@@ -9,7 +15,11 @@ import { CheckMemberDto } from './dto/check-member.dto';
 import { LoginDto } from './dto/login.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { StaffInviteDto, StaffLoginDto } from './dto/staff-auth.dto';
+import {
+  StaffInviteDto,
+  StaffLoginDto,
+  UpdateStaffRoleDto,
+} from './dto/staff-auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -397,24 +407,353 @@ export class AuthService {
     };
   }
 
-  async staffInvite(dto: StaffInviteDto) {
+  /**
+   * App coach/admin login — returns a member-shaped JWT (gym claims + role)
+   * so Flutter can use the same SupabaseAuthGuard paths as members.
+   */
+  async coachLogin(dto: StaffLoginDto) {
+    const email = dto.email.toLowerCase();
+    const staff = await this.prisma.gymStaff.findUnique({ where: { email } });
+    if (!staff) {
+      throw new ForbiddenException('No coach account for this gym.');
+    }
+
+    let session: Awaited<ReturnType<typeof this.supabase.signInWithPassword>>;
+    try {
+      session = await this.supabase.signInWithPassword(email, dto.password);
+    } catch {
+      throw new UnauthorizedException('Incorrect email or password.');
+    }
+
+    if (!session?.user?.id) {
+      throw new UnauthorizedException('Login failed. Please try again.');
+    }
+
+    const authProviderId = session.user.id;
+    if (!staff.authProviderId) {
+      await this.prisma.gymStaff.update({
+        where: { id: staff.id },
+        data: { authProviderId },
+      });
+    }
+
+    const user = await this.ensureStaffAppUser({
+      gymId: staff.gymId,
+      email,
+      authProviderId,
+      role: staff.role,
+      memberName: email.split('@')[0] ?? 'Coach',
+    });
+
+    await this.supabase.updateUserMetadata(authProviderId, {
+      gym_id: staff.gymId,
+      member_id: user.id,
+      role: staff.role,
+      display_name: user.displayName ?? null,
+      password_set: true,
+    });
+
+    const refreshedSession = await this.supabase.refreshSession(session.refresh_token!);
+
+    return {
+      user,
+      accessToken: refreshedSession.access_token,
+      refreshToken: refreshedSession.refresh_token,
+      role: staff.role,
+    };
+  }
+
+  async staffInvite(gymId: string, dto: StaffInviteDto) {
     const email = dto.email.toLowerCase();
     const existing = await this.prisma.gymStaff.findUnique({ where: { email } });
     if (existing) {
       throw new ConflictException('Staff email already registered.');
     }
 
+    const role = dto.role ?? 'admin';
     const authUser = await this.supabase.createStaffUser(email, dto.password);
 
     const staff = await this.prisma.gymStaff.create({
       data: {
-        gymId: dto.gymId,
+        gymId,
         email,
-        role: dto.role ?? 'admin',
+        role,
         authProviderId: authUser.id,
       },
     });
 
-    return { staff };
+    const user = await this.ensureStaffAppUser({
+      gymId,
+      email,
+      authProviderId: authUser.id,
+      role,
+      memberName: email.split('@')[0] ?? 'Coach',
+    });
+
+    await this.supabase.updateUserMetadata(authUser.id, {
+      gym_id: gymId,
+      member_id: user.id,
+      role,
+      display_name: user.displayName ?? null,
+      password_set: true,
+    });
+
+    return { staff, user };
+  }
+
+  /** Ensure roster + users row for a staff member so app JWT paths work. */
+  private async ensureStaffAppUser(params: {
+    gymId: string;
+    email: string;
+    authProviderId: string;
+    role: string;
+    memberName: string;
+  }) {
+    const { gymId, email, authProviderId, memberName } = params;
+
+    let user = await this.prisma.user.findUnique({
+      where: { authProviderId },
+      select: {
+        id: true,
+        gymId: true,
+        rosterId: true,
+        email: true,
+        phone: true,
+        displayName: true,
+        authProviderId: true,
+      },
+    });
+
+    if (user) {
+      return user;
+    }
+
+    user = await this.prisma.user.findFirst({
+      where: { gymId, email },
+      select: {
+        id: true,
+        gymId: true,
+        rosterId: true,
+        email: true,
+        phone: true,
+        displayName: true,
+        authProviderId: true,
+      },
+    });
+
+    if (user) {
+      if (!user.authProviderId) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { authProviderId },
+          select: {
+            id: true,
+            gymId: true,
+            rosterId: true,
+            email: true,
+            phone: true,
+            displayName: true,
+            authProviderId: true,
+          },
+        });
+      }
+      return user;
+    }
+
+    let roster = await this.prisma.gymRoster.findFirst({
+      where: { gymId, email },
+    });
+
+    if (!roster) {
+      roster = await this.prisma.gymRoster.create({
+        data: {
+          gymId,
+          email,
+          memberName,
+          status: 'matched',
+        },
+      });
+    }
+
+    user = await this.prisma.user.create({
+      data: {
+        gymId,
+        rosterId: roster.id,
+        email,
+        displayName: roster.memberName ?? memberName,
+        authProviderId,
+      },
+      select: {
+        id: true,
+        gymId: true,
+        rosterId: true,
+        email: true,
+        phone: true,
+        displayName: true,
+        authProviderId: true,
+      },
+    });
+
+    if (roster.status !== 'matched' || roster.matchedUserId !== user.id) {
+      await this.roster.markMatched(roster.id, user.id);
+    }
+
+    return user;
+  }
+
+  async listCoaches(gymId: string) {
+    const staff = await this.prisma.gymStaff.findMany({
+      where: {
+        gymId,
+        role: { in: ['coach', 'admin'] },
+        authProviderId: { not: null },
+      },
+      select: {
+        id: true,
+        role: true,
+        email: true,
+        authProviderId: true,
+      },
+      orderBy: [{ role: 'asc' }, { email: 'asc' }],
+    });
+
+    const authIds = staff
+      .map((s) => s.authProviderId)
+      .filter((id): id is string => !!id);
+
+    const users = await this.prisma.user.findMany({
+      where: { gymId, authProviderId: { in: authIds } },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        authProviderId: true,
+      },
+    });
+
+    const byAuth = new Map(users.map((u) => [u.authProviderId!, u]));
+    const userIds = users.map((u) => u.id);
+
+    const [programCounts, activeSessions] = await Promise.all([
+      userIds.length
+        ? this.prisma.workoutTemplate.groupBy({
+            by: ['createdByUserId'],
+            where: {
+              gymId,
+              source: 'coach_program',
+              isActive: true,
+              createdByUserId: { in: userIds },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      userIds.length
+        ? this.prisma.workoutSession.findMany({
+            where: {
+              gymId,
+              endedAt: null,
+              deletedAt: null,
+              OR: [
+                { userId: { in: userIds } },
+                { participants: { some: { userId: { in: userIds } } } },
+              ],
+            },
+            select: {
+              userId: true,
+              participants: { select: { userId: true } },
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const programsByCoach = new Map(
+      programCounts.map((row) => [
+        row.createdByUserId!,
+        row._count._all,
+      ]),
+    );
+    const trainingIds = new Set<string>();
+    for (const session of activeSessions) {
+      trainingIds.add(session.userId);
+      for (const p of session.participants) trainingIds.add(p.userId);
+    }
+
+    return staff
+      .map((s) => {
+        const user = s.authProviderId ? byAuth.get(s.authProviderId) : undefined;
+        if (!user) return null;
+        return {
+          userId: user.id,
+          staffId: s.id,
+          displayName: user.displayName || user.email || s.email,
+          email: user.email ?? s.email,
+          role: s.role,
+          avatarUrl: null as string | null,
+          programCount: programsByCoach.get(user.id) ?? 0,
+          isTrainingNow: trainingIds.has(user.id),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+  }
+
+  async listStaff(gymId: string) {
+    return this.prisma.gymStaff.findMany({
+      where: { gymId },
+      select: {
+        id: true,
+        gymId: true,
+        email: true,
+        role: true,
+        authProviderId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: [{ role: 'asc' }, { email: 'asc' }],
+    });
+  }
+
+  async updateStaffRole(gymId: string, staffId: string, dto: UpdateStaffRoleDto) {
+    const staff = await this.prisma.gymStaff.findFirst({
+      where: { id: staffId, gymId },
+      select: { id: true, authProviderId: true },
+    });
+    if (!staff) {
+      throw new NotFoundException('Staff account not found');
+    }
+
+    if (staff.authProviderId) {
+      const existing = await this.supabase.getUserById(staff.authProviderId);
+      await this.supabase.updateUserMetadata(staff.authProviderId, {
+        ...(existing?.user_metadata ?? {}),
+        role: dto.role,
+      });
+    }
+
+    return this.prisma.gymStaff.update({
+      where: { id: staffId },
+      data: { role: dto.role },
+      select: {
+        id: true,
+        gymId: true,
+        email: true,
+        role: true,
+        authProviderId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async sendMemberPasswordReset(gymId: string, memberId: string) {
+    const member = await this.prisma.user.findFirst({
+      where: { id: memberId, gymId },
+      select: { email: true },
+    });
+    if (!member?.email) {
+      throw new NotFoundException('Member email not found');
+    }
+
+    await this.supabase.sendPasswordReset(member.email);
+    return { sent: true };
   }
 }

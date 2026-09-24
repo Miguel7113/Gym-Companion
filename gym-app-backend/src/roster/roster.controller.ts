@@ -12,21 +12,27 @@ export class RosterController {
 
   @Post('import-csv')
   importCsv(@CurrentStaff() staff: { gymId: string }, @Body() dto: UploadRosterCsvDto) {
-    return this.rosterService.importCsv(dto.gymId ?? staff.gymId, dto.csvContent);
+    return this.rosterService.importCsv(staff.gymId, dto.csvContent);
   }
 
   @Post('entry')
   addEntry(@CurrentStaff() staff: { gymId: string }, @Body() dto: RosterEntryDto) {
-    return this.rosterService.addEntry({ ...dto, gymId: dto.gymId ?? staff.gymId });
+    return this.rosterService.addEntry({ ...dto, gymId: staff.gymId });
   }
 
   @Get('pending/:gymId')
-  listPending(@Param('gymId') gymId: string) {
-    return this.rosterService.listPending(gymId);
+  listPending(
+    @CurrentStaff() staff: { gymId: string },
+    @Param('gymId') gymId: string,
+  ) {
+    return this.rosterService.listPending(staff.gymId === gymId ? gymId : staff.gymId);
   }
 
   @Post('approve/:rosterId')
-  approve(@Param('rosterId') rosterId: string) {
-    return this.rosterService.approvePending(rosterId);
+  approve(
+    @CurrentStaff() staff: { gymId: string },
+    @Param('rosterId') rosterId: string,
+  ) {
+    return this.rosterService.approvePending(staff.gymId, rosterId);
   }
 }

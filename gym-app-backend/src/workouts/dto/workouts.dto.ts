@@ -1,4 +1,17 @@
-import { IsInt, IsNumber, IsOptional, IsString, Min, IsBoolean, IsArray, IsDateString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 
 export class CreateExerciseDto {
   @IsString()
@@ -13,6 +26,10 @@ export class CreateSessionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  templateId?: string;
 
   /** Client-recorded start time (ISO 8601). Used by offline sync. */
   @IsOptional()
@@ -102,4 +119,117 @@ export class UpdateUserProfileDto {
   @IsOptional()
   @IsNumber()
   heightCm?: number;
+}
+
+export class RoutineExerciseDto {
+  @IsString()
+  exerciseId!: string;
+
+  @IsInt()
+  @Min(0)
+  sortOrder!: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  defaultSets?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  defaultReps?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultWeightKg?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  defaultDurationSecs?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultDistanceM?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  notes?: string;
+}
+
+export class CreateRoutineDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  difficulty?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  durationMins?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoutineExerciseDto)
+  exercises!: RoutineExerciseDto[];
+}
+
+export class UpdateRoutineDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  difficulty?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  durationMins?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoutineExerciseDto)
+  exercises?: RoutineExerciseDto[];
 }

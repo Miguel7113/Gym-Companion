@@ -37,6 +37,37 @@ const EXERCISES = [
   { name: 'Hanging Leg Raise', category: 'core' },
 ];
 
+const CATEGORY_MAP: Record<string, string> = {
+  push: 'strength',
+  pull: 'strength',
+  legs: 'strength',
+  core: 'strength',
+  cardio: 'cardio',
+};
+
+const BODY_PART_MAP: Record<string, string[]> = {
+  push: ['chest', 'shoulders', 'upper arms'],
+  pull: ['back', 'upper arms'],
+  legs: ['upper legs', 'lower legs'],
+  core: ['waist'],
+  cardio: ['cardio'],
+};
+
+function toCanonicalExercise(entry: (typeof EXERCISES)[number]) {
+  return {
+    name: entry.name,
+    category: CATEGORY_MAP[entry.category] ?? 'strength',
+    bodyParts: BODY_PART_MAP[entry.category] ?? ['full body'],
+    targetMuscles: [],
+    secondaryMuscles: [],
+    equipments: [],
+    difficulty: 'beginner',
+    exerciseTypes: [entry.category],
+    instructions: [],
+    isCustom: false,
+  };
+}
+
 async function main() {
   const gym = await prisma.gym.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
@@ -74,7 +105,7 @@ async function main() {
   const existingExercises = await prisma.exercise.count({ where: { isCustom: false } });
   if (existingExercises === 0) {
     await prisma.exercise.createMany({
-      data: EXERCISES.map((e) => ({ ...e, isCustom: false })),
+      data: EXERCISES.map(toCanonicalExercise),
     });
     console.log(`Seeded ${EXERCISES.length} exercises`);
   } else {

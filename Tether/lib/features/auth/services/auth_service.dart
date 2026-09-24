@@ -95,6 +95,24 @@ class AuthService {
     await _apiClient.setAccessToken(accessToken);
   }
 
+  /// Coach/admin app login — staff credentials, member-shaped JWT with role.
+  Future<void> coachLogin({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _apiClient.post('/auth/coach/login', data: {
+      'email': email,
+      'password': password,
+    });
+
+    final data = response.data as Map<String, dynamic>;
+    final accessToken = data['accessToken'] as String;
+    final refreshToken = data['refreshToken'] as String;
+
+    await sb.Supabase.instance.client.auth.setSession(refreshToken);
+    await _apiClient.setAccessToken(accessToken);
+  }
+
   // ── Set password (once, after first OTP/magic link verification) ──────────
 
   Future<void> setPassword(String password) async {

@@ -1,8 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/glass_card.dart';
 import '../models/feed_models.dart';
 import '../services/social_service.dart';
 
@@ -71,7 +71,20 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
         _focusNode.unfocus();
       }
     } catch (e) {
-      if (mounted) setState(() => _posting = false);
+      if (mounted) {
+        setState(() => _posting = false);
+        final isRateLimited =
+            e is DioException && e.response?.statusCode == 429;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isRateLimited
+                  ? 'Too many comments. Try again later.'
+                  : "Couldn't post comment",
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -84,7 +97,7 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
       height: MediaQuery.of(context).size.height * 0.75 + keyboardPad,
       decoration: const BoxDecoration(
         color: AppTheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXxl)),
       ),
       child: Column(
         children: [
@@ -103,8 +116,10 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: Row(
               children: [
-                Expanded(child: Text('COMMENTS',
-                  style: Theme.of(context).textTheme.labelLarge)),
+                Expanded(child: Text('Comments',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ))),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: const Icon(Symbols.close, size: 18,

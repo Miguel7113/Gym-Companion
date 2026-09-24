@@ -11,15 +11,17 @@ import '../../features/home/screens/home_screen.dart';
 import '../../features/workouts/screens/workouts_screen.dart';
 import '../../features/social/screens/social_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
+import '../../features/coach/screens/coach_home_screen.dart';
+import '../../features/auth/providers/auth_provider.dart';
 
 class MainNavigation extends ConsumerStatefulWidget {
   const MainNavigation({super.key});
 
   static const List<_NavItem> _navItems = [
-    _NavItem(label: 'HOME',    icon: Symbols.home,           activeFill: true),
-    _NavItem(label: 'TRAIN',   icon: Symbols.fitness_center, activeFill: true),
-    _NavItem(label: 'FEED',    icon: Symbols.group,          activeFill: true),
-    _NavItem(label: 'PROFILE', icon: Symbols.person,         activeFill: true),
+    _NavItem(label: 'Home', icon: Symbols.home, activeFill: true),
+    _NavItem(label: 'Train', icon: Symbols.fitness_center, activeFill: true),
+    _NavItem(label: 'Feed', icon: Symbols.group, activeFill: true),
+    _NavItem(label: 'Profile', icon: Symbols.person, activeFill: true),
   ];
 
   @override
@@ -27,13 +29,6 @@ class MainNavigation extends ConsumerStatefulWidget {
 }
 
 class _MainNavigationState extends ConsumerState<MainNavigation> {
-  static const List<Widget> _screens = [
-    HomeScreen(),
-    WorkoutsScreen(),
-    SocialScreen(),
-    ProfileScreen(),
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -42,26 +37,37 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     });
   }
 
+  List<Widget> _screensForRole(String? role) {
+    final isStaff = role != null && {'coach', 'admin'}.contains(role.toLowerCase());
+    return [
+      isStaff ? const CoachHomeScreen() : const HomeScreen(),
+      const WorkoutsScreen(),
+      const SocialScreen(),
+      const ProfileScreen(),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<AsyncValue<bool>>(connectivityProvider, (prev, next) {
       final wasOnline = prev?.valueOrNull ?? false;
       final isOnline = next.valueOrNull ?? false;
       if (!wasOnline && isOnline) {
-        ref.read(syncServiceProvider).syncPendingSessions();
+        final sync = ref.read(syncServiceProvider);
+        sync.seedIfNeeded();
+        sync.syncPendingSessions();
       }
     });
 
     final currentIndex = ref.watch(navIndexProvider);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final role = ref.watch(currentUserProvider)?.role;
+    final screens = _screensForRole(role);
 
     return Scaffold(
       backgroundColor: AppTheme.surface,
       extendBody: true,
-      body: IndexedStack(
-        index: currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: currentIndex, children: screens),
       bottomNavigationBar: Padding(
         padding: EdgeInsets.only(
           left: AppTheme.gutter,
@@ -75,12 +81,20 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
             child: Container(
               height: 64,
               decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerHigh.withOpacity(0.85),
+                color: AppTheme.surfaceContainerHigh.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-                border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.08),
+                  width: 1,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.primaryContainer.withOpacity(0.04),
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 20,
+                    offset: const Offset(0, -4),
+                  ),
+                  BoxShadow(
+                    color: AppTheme.primaryContainer.withOpacity(0.05),
                     blurRadius: 24,
                     offset: const Offset(0, -4),
                   ),
@@ -93,7 +107,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
                     child: _NavButton(
                       item: MainNavigation._navItems[i],
                       isActive: currentIndex == i,
-                      onTap: () => ref.read(navIndexProvider.notifier).state = i,
+                      onTap: () =>
+                          ref.read(navIndexProvider.notifier).state = i,
                     ),
                   ),
                 ),
@@ -110,7 +125,11 @@ class _NavItem {
   final String label;
   final IconData icon;
   final bool activeFill;
-  const _NavItem({required this.label, required this.icon, this.activeFill = false});
+  const _NavItem({
+    required this.label,
+    required this.icon,
+    this.activeFill = false,
+  });
 }
 
 class _NavButton extends StatelessWidget {
@@ -118,11 +137,17 @@ class _NavButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NavButton({required this.item, required this.isActive, required this.onTap});
+  const _NavButton({
+    required this.item,
+    required this.isActive,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = isActive ? AppTheme.primaryContainer : AppTheme.onSurfaceVariant;
+    final iconColor = isActive
+        ? AppTheme.primaryContainer
+        : AppTheme.onSurfaceVariant;
 
     return GestureDetector(
       onTap: onTap,
@@ -136,26 +161,31 @@ class _NavButton extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
               decoration: isActive
-                  ? BoxDecoration(boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primaryContainer.withOpacity(0.18),
-                        blurRadius: 12,
-                      ),
-                    ])
+                  ? BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryContainer.withOpacity(0.18),
+                          blurRadius: 12,
+                        ),
+                      ],
+                    )
                   : null,
-              child: Icon(item.icon, size: 22, color: iconColor,
-                  fill: isActive ? 1.0 : 0.0),
+              child: Icon(
+                item.icon,
+                size: 22,
+                color: iconColor,
+                fill: isActive ? 1.0 : 0.0,
+              ),
             ),
             const SizedBox(height: 3),
             Text(
               item.label,
-              style: TextStyle(
-                fontFamily: 'JetBrains Mono',
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.08,
-                color: iconColor,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontSize: 10,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                    letterSpacing: -0.1,
+                    color: iconColor,
+                  ),
             ),
             const SizedBox(height: 2),
             AnimatedContainer(
@@ -166,10 +196,12 @@ class _NavButton extends StatelessWidget {
                 color: AppTheme.primaryContainer,
                 shape: BoxShape.circle,
                 boxShadow: isActive
-                    ? [BoxShadow(
-                        color: AppTheme.primaryContainer.withOpacity(0.6),
-                        blurRadius: 4,
-                      )]
+                    ? [
+                        BoxShadow(
+                          color: AppTheme.primaryContainer.withOpacity(0.55),
+                          blurRadius: 4,
+                        ),
+                      ]
                     : null,
               ),
             ),
