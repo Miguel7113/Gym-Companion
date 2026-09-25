@@ -529,3 +529,21 @@ model AppNotification {
   @@index([gymId])
   @@map("app_notifications")
 }
+
+// Public "Propose your gym" applications from the marketing site.
+// Reviewed manually; not tied to any gym until onboarding.
+model GymLead {
+  id          String   @id @default(uuid())
+  gymName     String   @map("gym_name")
+  contactName String   @map("contact_name")
+  email       String
+  phone       String?
+  city        String?
+  memberCount String?  @map("member_count")
+  message     String?
+  status      String   @default("NEW")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("gym_leads")
+}

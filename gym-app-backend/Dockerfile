@@ -26,5 +26,6 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/prisma ./prisma
 USER nestjs
 # Cloud Run injects PORT (usually 8080)
+ENV PORT=8080
 EXPOSE 8080
 CMD ["node", "dist/main.js"]

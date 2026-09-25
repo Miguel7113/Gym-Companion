@@ -9,6 +9,50 @@ Database / Auth / Storage stay on **Supabase**. Flutter points at the API URL af
 
 ---
 
+## Local production test (before touching GCP)
+
+Runs both images exactly as Cloud Run will, against the real Supabase project:
+
+```bash
+cd gym-app-backend && docker build -t tether-api:local .
+set -a && . ./.env && set +a
+docker run -d --name tether-api-test -p 8081:8080 -e NODE_ENV=production \
+  -e CORS_ORIGIN=http://localhost:8090 -e DATABASE_URL -e SUPABASE_URL \
+  -e SUPABASE_SERVICE_ROLE_KEY -e SUPABASE_JWT_SECRET tether-api:local
+curl localhost:8081/health/ready
+
+cd ../tether-web
+docker build --build-arg NEXT_PUBLIC_API_URL=http://localhost:8081 -t tether-web:local .
+docker run -d --name tether-web-test --network host -e PORT=8090 tether-web:local
+# open http://localhost:8090/login
+```
+
+`--network host` lets the portal's server reach the API on `localhost:8081`.
+
+---
+
+## Local production test (before touching GCP)
+
+Runs both images exactly as Cloud Run will, against the real Supabase project:
+
+```bash
+cd gym-app-backend && docker build -t tether-api:local .
+set -a && . ./.env && set +a
+docker run -d --name tether-api-test -p 8081:8080 -e NODE_ENV=production \
+  -e CORS_ORIGIN=http://localhost:8090 -e DATABASE_URL -e SUPABASE_URL \
+  -e SUPABASE_SERVICE_ROLE_KEY -e SUPABASE_JWT_SECRET tether-api:local
+curl localhost:8081/health/ready
+
+cd ../tether-web
+docker build --build-arg NEXT_PUBLIC_API_URL=http://localhost:8081 -t tether-web:local .
+docker run -d --name tether-web-test --network host -e PORT=8090 tether-web:local
+# open http://localhost:8090/login
+```
+
+`--network host` lets the portal's server reach the API on `localhost:8081`.
+
+---
+
 ## 0. Prerequisites
 
 Install and sign in:
@@ -220,8 +264,38 @@ gcloud run services update tether-api \
 ```bash
 cd Tether
 flutter run --dart-define=API_BASE_URL=$API_URL
-# later: bake API_URL into release builds
 ```
+
+### Android release build
+
+Release builds refuse to start without `API_BASE_URL`, and need the upload
+keystore to be accepted by the Play Store. Create the keystore **once** and
+back it up (losing it means you can't ship updates under the same listing):
+
+```bash
+keytool -genkey -v -keystore ~/tether-upload-keystore.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+Create `Tether/android/key.properties` (gitignored):
+
+```properties
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+storeFile=/home/YOU/tether-upload-keystore.jks
+```
+
+Build:
+
+```bash
+cd Tether
+flutter build appbundle --release --dart-define=API_BASE_URL=$API_URL   # Play Store
+flutter build apk --release --dart-define=API_BASE_URL=$API_URL         # side-load to a phone
+```
+
+Without `key.properties`, release builds fall back to debug signing — fine for
+side-loading, rejected by the Play Store.
 
 ---
 
