@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -246,15 +247,11 @@ class OfflineWorkoutService {
     }
     await _sessions.endSession(resolvedLocalId);
 
-    // Push the completed session to the server when online so sharing can use
-    // the server session id immediately afterward.
-    if (await checkIsOnline()) {
-      try {
-        await _sync.syncPendingSessions();
-      } catch (e) {
-        debugPrint('[OfflineWorkout] post-end sync failed: $e');
-      }
-    }
+    // Upload in the background: finishing must not wait on the network.
+    // The save screen calls ensureSessionReadyForShare before sharing.
+    _sync.syncPendingSessions().catchError((e) {
+      debugPrint('[OfflineWorkout] post-end sync failed: $e');
+    });
 
     final row = await _sessions.getSessionByLocalId(resolvedLocalId);
     if (row == null) throw Exception('Session $localId not found');
@@ -321,8 +318,20 @@ class OfflineWorkoutService {
     return AddSetResult(set: set, isPr: false);
   }
 
+  /// Removes a set locally and, when it already reached the server, remotely.
+  /// Throws if an uploaded set can't be deleted remotely (e.g. offline) so the
+  /// UI keeps it instead of leaving a ghost set on the server.
   Future<void> deleteSet(String setId) async {
-    await _sessions.deleteSet(setId);
+    final row = await _sessions.getSetById(setId);
+    final serverId = row?.serverId;
+    if (serverId != null) {
+      try {
+        await _api.deleteSet(serverId);
+      } on DioException catch (e) {
+        if (e.response?.statusCode != 404) rethrow;
+      }
+    }
+    await _sessions.deleteSet(row?.localId ?? setId);
   }
 
   Future<void> deleteSession(String sessionId) async {

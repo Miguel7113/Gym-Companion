@@ -152,8 +152,37 @@ class SyncService {
     await _syncPendingWorkoutShares();
   }
 
+  // Every logged set and every Finish tap triggers a sync. Running two at
+  // once creates duplicate server sessions/sets and can overwrite a freshly
+  // ended session with a stale "synced" status, so runs are serialised: a
+  // call made mid-run schedules one more pass and shares the same future.
+  Future<void>? _dataSyncInFlight;
+  bool _dataSyncRerun = false;
+  Future<void>? _shareSyncInFlight;
+  bool _shareSyncRerun = false;
+
   /// Session + set upload only (no feed share queue).
-  Future<void> _syncPendingWorkoutData() async {
+  Future<void> _syncPendingWorkoutData() {
+    final existing = _dataSyncInFlight;
+    if (existing != null) {
+      _dataSyncRerun = true;
+      return existing;
+    }
+    final run = () async {
+      try {
+        do {
+          _dataSyncRerun = false;
+          await _runWorkoutDataSync();
+        } while (_dataSyncRerun);
+      } finally {
+        _dataSyncInFlight = null;
+      }
+    }();
+    _dataSyncInFlight = run;
+    return run;
+  }
+
+  Future<void> _runWorkoutDataSync() async {
     final isOnline = await checkIsOnline();
     if (!isOnline) {
       debugPrint('[SyncService] offline — skipping sync');
@@ -211,8 +240,21 @@ class SyncService {
         );
       }
 
-      // Update local row with server ID before uploading its sets.
-      await _sessionsDao.markSessionSynced(session.localId, serverId);
+      // Update local row with server ID before uploading its sets. If the
+      // session was ended or renamed while this request was in flight, keep
+      // it pending so the next pass pushes the newer state.
+      final fresh = await _sessionsDao.getSessionByLocalId(session.localId);
+      final changedMeanwhile = fresh != null &&
+          (fresh.endedAt != session.endedAt || fresh.notes != session.notes);
+      if (changedMeanwhile) {
+        await _sessionsDao.markSessionPendingWithServerId(
+          session.localId,
+          serverId,
+        );
+        _dataSyncRerun = true;
+      } else {
+        await _sessionsDao.markSessionSynced(session.localId, serverId);
+      }
 
       // Update all sets to know the server session ID.
       await _sessionsDao.updateSetsServerSessionId(session.localId, serverId);
@@ -256,6 +298,11 @@ class SyncService {
             resultData['set'] as Map<String, dynamic>? ?? resultData;
         final serverId = setData['id'] as String;
 
+        // The user may have un-ticked the set while it was uploading.
+        if (!await _sessionsDao.setExists(set.localId)) {
+          await _apiClient.delete('/workouts/sets/$serverId');
+          continue;
+        }
         await _sessionsDao.markSetSynced(set.localId, serverId);
       } catch (e) {
         debugPrint('[SyncService] set ${set.localId} sync failed: $e');
@@ -294,7 +341,27 @@ class SyncService {
     return null;
   }
 
-  Future<void> _syncPendingWorkoutShares() async {
+  Future<void> _syncPendingWorkoutShares() {
+    final existing = _shareSyncInFlight;
+    if (existing != null) {
+      _shareSyncRerun = true;
+      return existing;
+    }
+    final run = () async {
+      try {
+        do {
+          _shareSyncRerun = false;
+          await _runWorkoutShareSync();
+        } while (_shareSyncRerun);
+      } finally {
+        _shareSyncInFlight = null;
+      }
+    }();
+    _shareSyncInFlight = run;
+    return run;
+  }
+
+  Future<void> _runWorkoutShareSync() async {
     final isOnline = await checkIsOnline();
     if (!isOnline) return;
 

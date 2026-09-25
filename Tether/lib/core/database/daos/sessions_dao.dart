@@ -86,6 +86,21 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  Future<void> markSessionPendingWithServerId(
+    String localId,
+    String serverId,
+  ) async {
+    await (update(
+      pendingSessions,
+    )..where((t) => t.localId.equals(localId))).write(
+      PendingSessionsCompanion(
+        serverId: Value(serverId),
+        syncStatus: const Value('pending'),
+        syncError: const Value(null),
+      ),
+    );
+  }
+
   Future<void> markSessionFailed(String localId, String error) async {
     final current = await (select(
       pendingSessions,
@@ -368,6 +383,19 @@ class SessionsDao extends DatabaseAccessor<AppDatabase>
     await (update(pendingSets)
           ..where((t) => t.sessionLocalId.equals(sessionLocalId)))
         .write(PendingSetsCompanion(sessionServerId: Value(sessionServerId)));
+  }
+
+  Future<bool> setExists(String localId) async {
+    final row = await (select(pendingSets)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  Future<PendingSet?> getSetById(String id) {
+    return (select(pendingSets)
+          ..where((t) => t.localId.equals(id) | t.serverId.equals(id)))
+        .getSingleOrNull();
   }
 
   Future<void> deleteSet(String localId) async {

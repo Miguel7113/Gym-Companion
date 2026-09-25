@@ -67,6 +67,7 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
   final Map<String, List<DraftSetEntry>> _draftSetsByExercise = {};
   final Map<String, ProgressData?> _previousByExercise = {};
   final Map<String, bool> _restEnabledByExercise = {};
+  final Map<String, String> _notesByExercise = {};
   int _prCount = 0;
   String? _lastPrExerciseName;
   String? _lastPrValue;
@@ -323,12 +324,14 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
                   .expand((sets) => sets)
                   .fold<double>(0, (sum, set) => sum + set.weightKg * set.reps),
               workoutName: _session!.notes,
+              initialCaption: _exerciseNotesSummary(),
             ),
           ),
         );
       }
     } catch (e) {
       debugPrint('[WorkoutSessionScreen] endSession failed: $e');
+      if (!mounted) return;
       setState(() {
         _isEnding = false;
         _error = "Couldn't save workout";
@@ -346,6 +349,16 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
       ref.invalidate(homeDataProvider);
       _startElapsedTimer();
     }
+  }
+
+  String? _exerciseNotesSummary() {
+    final lines = <String>[];
+    for (final id in _exerciseOrder) {
+      final note = _notesByExercise[id]?.trim() ?? '';
+      if (note.isEmpty) continue;
+      lines.add('${_exerciseMap[id]?.name ?? 'Exercise'}: $note');
+    }
+    return lines.isEmpty ? null : lines.join('\n');
   }
 
   Future<bool> _showEndConfirm() async {
@@ -422,27 +435,52 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
   }
 
   Future<void> _removeExercise(String exerciseId) async {
-    final hasLoggedSets = (_setsByExercise[exerciseId]?.isNotEmpty ?? false);
-    if (hasLoggedSets) {
+    final logged = List<_LocalSet>.from(_setsByExercise[exerciseId] ?? const []);
+    if (logged.isNotEmpty) {
+      final count = logged.length;
       final confirmed = await showAppConfirmDialog(
         context,
-        icon: Symbols.remove_circle,
+        icon: Symbols.delete,
         tone: AppDialogTone.danger,
-        title: 'Remove exercise?',
+        title: 'Remove ${_exerciseMap[exerciseId]?.name ?? 'exercise'}?',
         message:
-            'Sets you already logged for it stay in your workout history.',
+            'This also deletes the $count set${count == 1 ? '' : 's'} you logged for it.',
         confirmLabel: 'Remove',
       );
       if (confirmed != true || !mounted) return;
     }
+
+    final svc = ref.read(offlineWorkoutServiceProvider);
+    final deleted = <_LocalSet>[];
+    for (final set in logged) {
+      try {
+        await svc.deleteSet(set.id);
+        deleted.add(set);
+      } catch (e) {
+        debugPrint('[WorkoutSessionScreen] removeExercise failed: $e');
+        if (!mounted) return;
+        setState(() {
+          _setsByExercise[exerciseId]?.removeWhere(deleted.contains);
+          _prCount -= deleted.where((s) => s.isPr).length;
+        });
+        showAppSnack(
+          context,
+          "Couldn't remove all sets. Check your connection and try again.",
+          tone: AppSnackTone.error,
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
+
     setState(() {
+      _prCount -= deleted.where((s) => s.isPr).length;
       _exerciseOrder.remove(exerciseId);
       _draftSetsByExercise.remove(exerciseId);
       _restEnabledByExercise.remove(exerciseId);
-      if (!hasLoggedSets) {
-        _setsByExercise.remove(exerciseId);
-        _exerciseMap.remove(exerciseId);
-      }
+      _notesByExercise.remove(exerciseId);
+      _setsByExercise.remove(exerciseId);
+      _exerciseMap.remove(exerciseId);
     });
   }
 
@@ -461,7 +499,9 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
       final svc = ref.read(offlineWorkoutServiceProvider);
       final ex = _exerciseMap[exerciseId];
       if (ex == null) return;
-      final setNum = (_setsByExercise[exerciseId]?.length ?? 0) + 1;
+      final setNum = (_setsByExercise[exerciseId] ?? const <_LocalSet>[])
+              .fold<int>(0, (max, s) => s.setNumber > max ? s.setNumber : max) +
+          1;
 
       final result = await svc.addSet(
         _session!.id,
@@ -503,9 +543,11 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
         HapticFeedback.lightImpact();
       }
 
+      if (!mounted) return;
       setState(() {
-        _draftSetsByExercise[exerciseId]?.remove(draft);
-        _draftSetsByExercise[exerciseId]?.add(DraftSetEntry.empty());
+        final drafts = _draftSetsByExercise[exerciseId];
+        drafts?.remove(draft);
+        if (drafts != null && drafts.isEmpty) drafts.add(DraftSetEntry.empty());
       });
 
       if (_restEnabledByExercise[exerciseId] == true) {
@@ -521,20 +563,42 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
     }
   }
 
-  Future<void> _deleteSet(String setId, String exerciseId) async {
+  /// Un-ticks a logged set: it goes back to an editable row with the same
+  /// values. The exercise always stays in the workout.
+  Future<void> _uncompleteSet(String exerciseId, String setId) async {
+    final sets = _setsByExercise[exerciseId];
+    final index = sets?.indexWhere((s) => s.id == setId) ?? -1;
+    if (sets == null || index < 0) return;
+    final removed = sets[index];
+    final restored = DraftSetEntry(
+      localId: 'undo_${removed.id}',
+      weightKg: removed.weightKg,
+      reps: removed.reps,
+      rpe: removed.rpe,
+    );
+
+    setState(() {
+      sets.removeAt(index);
+      if (removed.isPr && _prCount > 0) _prCount--;
+      _draftSetsByExercise.putIfAbsent(exerciseId, () => []).insert(0, restored);
+    });
+
     try {
-      final svc = ref.read(offlineWorkoutServiceProvider);
-      await svc.deleteSet(setId);
-      setState(() {
-        _setsByExercise[exerciseId]?.removeWhere((s) => s.id == setId);
-        if (_setsByExercise[exerciseId]?.isEmpty == true) {
-          _setsByExercise.remove(exerciseId);
-          _exerciseOrder.remove(exerciseId);
-          _exerciseMap.remove(exerciseId);
-        }
-      });
+      await ref.read(offlineWorkoutServiceProvider).deleteSet(removed.id);
     } catch (e) {
-      debugPrint('[WorkoutSessionScreen] deleteSet failed: $e');
+      debugPrint('[WorkoutSessionScreen] uncompleteSet failed: $e');
+      if (!mounted) return;
+      setState(() {
+        final current = _setsByExercise.putIfAbsent(exerciseId, () => []);
+        current.insert(index.clamp(0, current.length), removed);
+        if (removed.isPr) _prCount++;
+        _draftSetsByExercise[exerciseId]?.remove(restored);
+      });
+      showAppSnack(
+        context,
+        "Couldn't undo that set. Check your connection and try again.",
+        tone: AppSnackTone.error,
+      );
     }
   }
 
@@ -606,194 +670,200 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
 
     final isCompleted = _session!.endedAt != null;
 
-    return Scaffold(
-      backgroundColor: AppTheme.surface,
-      body: Stack(
-        children: [
-          // ── Main scrollable content ──────────────────────────────────────
-          CustomScrollView(
-            slivers: [
-              // Sticky header
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _SessionHeaderDelegate(
-                  session: _session!,
-                  elapsed: _formatElapsed(_elapsed),
-                  isEnding: _isEnding,
-                  onEnd: _endSession,
-                  topInset: MediaQuery.of(context).padding.top,
-                  isCompleted: isCompleted,
-                ),
-              ),
-
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 12),
-                  child: WorkoutStatsBar(
-                    elapsed: _elapsed,
-                    totalVolumeKg: _totalVolumeKg,
-                    totalSets: _totalSets,
-                    exercises: _exerciseOrder
-                        .map((id) => _exerciseMap[id])
-                        .whereType<Exercise>(),
+    return PopScope(
+      canPop: !_isEnding,
+      child: Scaffold(
+        backgroundColor: AppTheme.surface,
+        body: Stack(
+          children: [
+            // ── Main scrollable content ──────────────────────────────────────
+            CustomScrollView(
+              slivers: [
+                // Sticky header
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SessionHeaderDelegate(
+                    session: _session!,
+                    elapsed: _formatElapsed(_elapsed),
+                    isEnding: _isEnding,
+                    onEnd: _endSession,
+                    topInset: MediaQuery.of(context).padding.top,
+                    isCompleted: isCompleted,
                   ),
                 ),
-              ),
 
-              // Error banner
-              if (_error != null)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppTheme.containerMargin,
-                      12,
-                      AppTheme.containerMargin,
-                      0,
+                    padding: const EdgeInsets.only(top: 8, bottom: 12),
+                    child: WorkoutStatsBar(
+                      elapsed: _elapsed,
+                      totalVolumeKg: _totalVolumeKg,
+                      totalSets: _totalSets,
+                      exercises: _exerciseOrder
+                          .map((id) => _exerciseMap[id])
+                          .whereType<Exercise>(),
                     ),
-                    child: _InlineBanner(message: _error!, isError: true),
                   ),
                 ),
 
-              // PR banner
-              SliverToBoxAdapter(
-                child: ScaleTransition(
-                  scale: CurvedAnimation(
-                    parent: _prBannerCtrl,
-                    curve: Curves.elasticOut,
-                  ),
-                  child: _prBannerCtrl.value > 0
-                      ? Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            AppTheme.containerMargin,
-                            12,
-                            AppTheme.containerMargin,
-                            0,
-                          ),
-                          child: _PrBanner(
-                            prCount: _prCount,
-                            lastPrExerciseName: _lastPrExerciseName,
-                            lastPrValue: _lastPrValue,
-                            lastPrImageUrl: _lastPrImageUrl,
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ),
-
-              // Exercise cards (Hevy-style inline logging)
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppTheme.containerMargin,
-                  0,
-                  AppTheme.containerMargin,
-                  0,
-                ),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate((_, i) {
-                    final exerciseId = _exerciseOrder[i];
-                    final exercise = _exerciseMap[exerciseId];
-                    if (exercise == null) return const SizedBox.shrink();
-                    final logged = (_setsByExercise[exerciseId] ?? [])
-                        .map(
-                          (s) => LoggedSetEntry(
-                            id: s.id,
-                            setNumber: s.setNumber,
-                            weightKg: s.weightKg,
-                            reps: s.reps,
-                            rpe: s.rpe,
-                            isPr: s.isPr,
-                          ),
-                        )
-                        .toList();
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: HevyExerciseCard(
-                        key: ValueKey(exerciseId),
-                        exercise: exercise,
-                        loggedSets: logged,
-                        draftSets: isCompleted
-                            ? const []
-                            : (_draftSetsByExercise[exerciseId]
-                                        ?.isNotEmpty ==
-                                    true
-                                ? _draftSetsByExercise[exerciseId]!
-                                : [DraftSetEntry.empty()]),
-                        previousSet: _previousByExercise[exerciseId],
-                        readOnly: isCompleted,
-                        restEnabled: _restEnabledByExercise[exerciseId] ?? false,
-                        onOpenInfo: () => _openExerciseInfo(exerciseId),
-                        onAddDraftSet: () => _addDraftSet(exerciseId),
-                        onRemoveExercise: isCompleted
-                            ? null
-                            : () => _removeExercise(exerciseId),
-                        onToggleRest: isCompleted
-                            ? null
-                            : () => _toggleRestForExercise(exerciseId),
-                        onCompleteDraft: (draft, weight, reps, rpe) =>
-                            _completeDraftSet(
-                          exerciseId,
-                          draft,
-                          weight,
-                          reps,
-                          rpe,
-                        ),
-                        onDeleteLoggedSet: (setId) =>
-                            _deleteSet(setId, exerciseId),
+                // Error banner
+                if (_error != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTheme.containerMargin,
+                        12,
+                        AppTheme.containerMargin,
+                        0,
                       ),
-                    );
-                  }, childCount: _exerciseOrder.length),
-                ),
-              ),
-
-              // Empty state
-              if (_exerciseOrder.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppTheme.containerMargin,
-                      AppTheme.stackLg,
-                      AppTheme.containerMargin,
-                      0,
+                      child: _InlineBanner(message: _error!, isError: true),
                     ),
-                    child: _EmptySessionState(),
+                  ),
+
+                // PR banner
+                SliverToBoxAdapter(
+                  child: ScaleTransition(
+                    scale: CurvedAnimation(
+                      parent: _prBannerCtrl,
+                      curve: Curves.elasticOut,
+                    ),
+                    child: _prBannerCtrl.value > 0
+                        ? Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.containerMargin,
+                              12,
+                              AppTheme.containerMargin,
+                              0,
+                            ),
+                            child: _PrBanner(
+                              prCount: _prCount,
+                              lastPrExerciseName: _lastPrExerciseName,
+                              lastPrValue: _lastPrValue,
+                              lastPrImageUrl: _lastPrImageUrl,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ),
 
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: isCompleted
-                      ? 32
-                      : MediaQuery.of(context).padding.bottom + 96,
+                // Exercise cards (Hevy-style inline logging)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppTheme.containerMargin,
+                    0,
+                    AppTheme.containerMargin,
+                    0,
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((_, i) {
+                      final exerciseId = _exerciseOrder[i];
+                      final exercise = _exerciseMap[exerciseId];
+                      if (exercise == null) return const SizedBox.shrink();
+                      final logged = (_setsByExercise[exerciseId] ?? [])
+                          .map(
+                            (s) => LoggedSetEntry(
+                              id: s.id,
+                              setNumber: s.setNumber,
+                              weightKg: s.weightKg,
+                              reps: s.reps,
+                              rpe: s.rpe,
+                              isPr: s.isPr,
+                            ),
+                          )
+                          .toList();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: HevyExerciseCard(
+                          key: ValueKey(exerciseId),
+                          exercise: exercise,
+                          loggedSets: logged,
+                          draftSets: isCompleted
+                              ? const []
+                              : (_draftSetsByExercise[exerciseId]
+                                          ?.isNotEmpty ==
+                                      true
+                                  ? _draftSetsByExercise[exerciseId]!
+                                  : [DraftSetEntry.empty()]),
+                          previousSet: _previousByExercise[exerciseId],
+                          readOnly: isCompleted,
+                          restEnabled: _restEnabledByExercise[exerciseId] ?? false,
+                          onOpenInfo: () => _openExerciseInfo(exerciseId),
+                          onAddDraftSet: () => _addDraftSet(exerciseId),
+                          onRemoveExercise: isCompleted
+                              ? null
+                              : () => _removeExercise(exerciseId),
+                          onToggleRest: isCompleted
+                              ? null
+                              : () => _toggleRestForExercise(exerciseId),
+                          onCompleteDraft: (draft, weight, reps, rpe) =>
+                              _completeDraftSet(
+                            exerciseId,
+                            draft,
+                            weight,
+                            reps,
+                            rpe,
+                          ),
+                          onUncompleteSet: (set) =>
+                              _uncompleteSet(exerciseId, set.id),
+                          notes: _notesByExercise[exerciseId] ?? '',
+                          onNotesChanged: (value) =>
+                              _notesByExercise[exerciseId] = value,
+                        ),
+                      );
+                    }, childCount: _exerciseOrder.length),
+                  ),
+                ),
+
+                // Empty state
+                if (_exerciseOrder.isEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTheme.containerMargin,
+                        AppTheme.stackLg,
+                        AppTheme.containerMargin,
+                        0,
+                      ),
+                      child: _EmptySessionState(),
+                    ),
+                  ),
+
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: isCompleted
+                        ? 32
+                        : MediaQuery.of(context).padding.bottom + 96,
+                  ),
+                ),
+              ],
+            ),
+
+            // ── Rest timer overlay ───────────────────────────────────────────
+            if (_restActive)
+              Positioned(
+                left: AppTheme.containerMargin,
+                right: AppTheme.containerMargin,
+                bottom: MediaQuery.of(context).padding.bottom + 16,
+                child: _RestTimerCard(
+                  remaining: _restRemaining,
+                  total: _restDurationSecs,
+                  onDismiss: _dismissRest,
+                  onAdjust: (secs) => setState(() => _restDurationSecs = secs),
                 ),
               ),
-            ],
-          ),
-
-          // ── Rest timer overlay ───────────────────────────────────────────
-          if (_restActive)
-            Positioned(
-              left: AppTheme.containerMargin,
-              right: AppTheme.containerMargin,
-              bottom: MediaQuery.of(context).padding.bottom + 16,
-              child: _RestTimerCard(
-                remaining: _restRemaining,
-                total: _restDurationSecs,
-                onDismiss: _dismissRest,
-                onAdjust: (secs) => setState(() => _restDurationSecs = secs),
+            if (!_restActive && !isCompleted)
+              Positioned(
+                left: AppTheme.containerMargin,
+                right: AppTheme.containerMargin,
+                bottom: MediaQuery.of(context).padding.bottom + 16,
+                child: PrimaryButton(
+                  label: 'Add exercise',
+                  icon: Symbols.add,
+                  onPressed: _pickExercise,
+                ),
               ),
-            ),
-          if (!_restActive && !isCompleted)
-            Positioned(
-              left: AppTheme.containerMargin,
-              right: AppTheme.containerMargin,
-              bottom: MediaQuery.of(context).padding.bottom + 16,
-              child: PrimaryButton(
-                label: 'Add exercise',
-                icon: Symbols.add,
-                onPressed: _pickExercise,
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -908,7 +978,7 @@ class _SessionHeaderDelegate extends SliverPersistentHeaderDelegate {
           child: Row(
             children: [
               IconButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: isEnding ? null : () => Navigator.pop(context),
                 icon: const Icon(
                   Symbols.keyboard_arrow_down,
                   size: 28,
@@ -1427,6 +1497,7 @@ class WorkoutCompleteScreen extends ConsumerStatefulWidget {
   final int prCount;
   final double totalVolume;
   final String? workoutName;
+  final String? initialCaption;
 
   const WorkoutCompleteScreen({
     super.key,
@@ -1437,6 +1508,7 @@ class WorkoutCompleteScreen extends ConsumerStatefulWidget {
     required this.prCount,
     required this.totalVolume,
     this.workoutName,
+    this.initialCaption,
   });
 
   @override
@@ -1457,7 +1529,7 @@ class _WorkoutCompleteScreenState extends ConsumerState<WorkoutCompleteScreen> {
   @override
   void initState() {
     super.initState();
-    _captionCtrl = TextEditingController();
+    _captionCtrl = TextEditingController(text: widget.initialCaption ?? '');
     _titleCtrl = TextEditingController(text: widget.workoutName ?? '');
   }
 

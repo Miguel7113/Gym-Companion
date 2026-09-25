@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_dialog.dart';
 import '../models/workout_models.dart';
 import 'exercise_thumbnail.dart';
 
@@ -66,7 +67,9 @@ class HevyExerciseCard extends StatefulWidget {
   final VoidCallback? onRemoveExercise;
   final VoidCallback? onToggleRest;
   final CompleteDraftCallback onCompleteDraft;
-  final ValueChanged<String> onDeleteLoggedSet;
+  final ValueChanged<LoggedSetEntry> onUncompleteSet;
+  final String notes;
+  final ValueChanged<String>? onNotesChanged;
 
   const HevyExerciseCard({
     super.key,
@@ -76,8 +79,10 @@ class HevyExerciseCard extends StatefulWidget {
     required this.onOpenInfo,
     required this.onAddDraftSet,
     required this.onCompleteDraft,
-    required this.onDeleteLoggedSet,
+    required this.onUncompleteSet,
     this.previousSet,
+    this.notes = '',
+    this.onNotesChanged,
     this.readOnly = false,
     this.restEnabled = false,
     this.onRemoveExercise,
@@ -88,12 +93,22 @@ class HevyExerciseCard extends StatefulWidget {
   State<HevyExerciseCard> createState() => _HevyExerciseCardState();
 }
 
+enum _ExerciseMenuAction { info, addSet, remove }
+
 class _HevyExerciseCardState extends State<HevyExerciseCard> {
   final Map<String, TextEditingController> _weightCtrls = {};
   final Map<String, TextEditingController> _repsCtrls = {};
+  late final TextEditingController _notesCtrl =
+      TextEditingController(text: widget.notes);
+
+  // The logged row appears exactly where the draft's ✓ was, so the second
+  // tap of a double-tap would immediately un-log the set.
+  DateTime? _lastCompletedAt;
+  static const _undoGuard = Duration(milliseconds: 600);
 
   @override
   void dispose() {
+    _notesCtrl.dispose();
     for (final ctrl in _weightCtrls.values) {
       ctrl.dispose();
     }
@@ -107,7 +122,7 @@ class _HevyExerciseCardState extends State<HevyExerciseCard> {
     return _weightCtrls.putIfAbsent(
       draft.localId,
       () => TextEditingController(
-        text: draft.weightKg > 0 ? draft.weightKg.toString() : '',
+        text: draft.weightKg > 0 ? _formatKg(draft.weightKg) : '',
       ),
     );
   }
@@ -120,6 +135,9 @@ class _HevyExerciseCardState extends State<HevyExerciseCard> {
       ),
     );
   }
+
+  String _formatKg(double kg) =>
+      kg == kg.roundToDouble() ? kg.toStringAsFixed(0) : kg.toString();
 
   String get _previousLabel {
     final previous = widget.previousSet;
@@ -139,7 +157,50 @@ class _HevyExerciseCardState extends State<HevyExerciseCard> {
     }
     setState(() => draft.isSaving = true);
     await widget.onCompleteDraft(draft, weight, reps, draft.rpe);
+    _lastCompletedAt = DateTime.now();
     if (mounted) setState(() => draft.isSaving = false);
+  }
+
+  void _uncomplete(LoggedSetEntry set) {
+    final last = _lastCompletedAt;
+    if (last != null && DateTime.now().difference(last) < _undoGuard) return;
+    HapticFeedback.selectionClick();
+    widget.onUncompleteSet(set);
+  }
+
+  Future<void> _openMenu() async {
+    final action = await showAppActionSheet<_ExerciseMenuAction>(
+      context,
+      title: widget.exercise.name,
+      actions: [
+        const AppSheetAction(
+          icon: Symbols.info,
+          label: 'Exercise info',
+          value: _ExerciseMenuAction.info,
+        ),
+        const AppSheetAction(
+          icon: Symbols.add,
+          label: 'Add set',
+          value: _ExerciseMenuAction.addSet,
+        ),
+        if (widget.onRemoveExercise != null)
+          const AppSheetAction(
+            icon: Symbols.delete,
+            label: 'Remove exercise',
+            value: _ExerciseMenuAction.remove,
+            destructive: true,
+          ),
+      ],
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _ExerciseMenuAction.info:
+        widget.onOpenInfo();
+      case _ExerciseMenuAction.addSet:
+        widget.onAddDraftSet();
+      case _ExerciseMenuAction.remove:
+        widget.onRemoveExercise?.call();
+    }
   }
 
   @override
@@ -178,9 +239,10 @@ class _HevyExerciseCardState extends State<HevyExerciseCard> {
                     ),
                   ),
                 ),
-                if (!widget.readOnly && widget.onRemoveExercise != null)
+                if (!widget.readOnly)
                   IconButton(
-                    onPressed: widget.onRemoveExercise,
+                    onPressed: _openMenu,
+                    tooltip: 'Exercise options',
                     icon: const Icon(Symbols.more_vert, size: 20),
                     color: AppTheme.onSurfaceVariant,
                   ),
@@ -188,14 +250,36 @@ class _HevyExerciseCardState extends State<HevyExerciseCard> {
             ),
           ),
 
-          // Notes hint (visual parity with Hevy)
           if (!widget.readOnly)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+              child: TextField(
+                controller: _notesCtrl,
+                onChanged: widget.onNotesChanged,
+                minLines: 1,
+                maxLines: 4,
+                maxLength: 280,
+                textCapitalization: TextCapitalization.sentences,
+                style: Theme.of(context).textTheme.bodySmall,
+                decoration: InputDecoration(
+                  hintText: 'Add notes here…',
+                  hintStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.onSurfaceVariant.withOpacity(0.55),
+                      ),
+                  border: InputBorder.none,
+                  isDense: true,
+                  counterText: '',
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                ),
+              ),
+            )
+          else if (widget.notes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
               child: Text(
-                'Add notes here…',
+                widget.notes,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.onSurfaceVariant.withOpacity(0.55),
+                      color: AppTheme.onSurfaceVariant,
                     ),
               ),
             ),
@@ -258,12 +342,13 @@ class _HevyExerciseCardState extends State<HevyExerciseCard> {
             ),
           const SizedBox(height: 6),
 
-          ...widget.loggedSets.map(
-            (set) => _LoggedSetRow(
-              set: set,
+          ...widget.loggedSets.indexed.map(
+            (entry) => _LoggedSetRow(
+              set: entry.$2,
+              displayNumber: entry.$1 + 1,
               previousLabel: _previousLabel,
               readOnly: widget.readOnly,
-              onDelete: () => widget.onDeleteLoggedSet(set.id),
+              onUncomplete: () => _uncomplete(entry.$2),
             ),
           ),
           if (!widget.readOnly)
@@ -374,15 +459,17 @@ class _SetNumberBadge extends StatelessWidget {
 
 class _LoggedSetRow extends StatelessWidget {
   final LoggedSetEntry set;
+  final int displayNumber;
   final String previousLabel;
   final bool readOnly;
-  final VoidCallback onDelete;
+  final VoidCallback onUncomplete;
 
   const _LoggedSetRow({
     required this.set,
+    required this.displayNumber,
     required this.previousLabel,
     required this.readOnly,
-    required this.onDelete,
+    required this.onUncomplete,
   });
 
   @override
@@ -396,7 +483,7 @@ class _LoggedSetRow extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: _SetNumberBadge(
-                label: '${set.setNumber}',
+                label: '$displayNumber',
                 completed: true,
               ),
             ),
@@ -424,7 +511,7 @@ class _LoggedSetRow extends StatelessWidget {
             width: 44,
             child: _CheckButton(
               completed: true,
-              onPressed: readOnly ? null : onDelete,
+              onPressed: readOnly ? null : onUncomplete,
             ),
           ),
         ],
