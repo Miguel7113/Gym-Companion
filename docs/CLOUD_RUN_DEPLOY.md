@@ -315,6 +315,7 @@ side-loading, rejected by the Play Store.
 
 | Symptom | Fix |
 |---------|-----|
+| `--source` deploy: compute SA lacks `storage.objects.get` | New projects: `gcloud projects add-iam-policy-binding PROJECT --member=serviceAccount:NUMBER-compute@developer.gserviceaccount.com --role=roles/run.builder` |
 | Portal login network error | Rebuild web with correct `NEXT_PUBLIC_API_URL`; confirm API URL in browser Network tab |
 | API crash on boot | Check Cloud Run logs; secret values / `DATABASE_URL` pooler |
 | Prisma connection errors | Use Supabase pooler URL; confirm IP allowlist / Supabase network |
