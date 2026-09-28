@@ -9,25 +9,27 @@ Database / Auth / Storage stay on **Supabase**. Flutter points at the API URL af
 
 ---
 
-## Local production test (before touching GCP)
+## Live pilot deployment
 
-Runs both images exactly as Cloud Run will, against the real Supabase project:
+| | |
+|---|---|
+| Project | `tether-pilot` |
+| Region | `europe-north1` (closest to Supabase `eu-north-1`, Stockholm) |
+| API | `tether-api` → https://tether-api-1069329007311.europe-north1.run.app |
+| Runtime SA | `tether-api@tether-pilot.iam.gserviceaccount.com` (secret accessor only) |
+| DB secret | Supabase transaction pooler, port `6543`, `pgbouncer=true&connection_limit=5` |
+
+Redeploy the API after backend changes (run migrations first if there are new ones).
+`--source .` uploads the working tree, so deploy from a clean, committed checkout:
 
 ```bash
-cd gym-app-backend && docker build -t tether-api:local .
-set -a && . ./.env && set +a
-docker run -d --name tether-api-test -p 8081:8080 -e NODE_ENV=production \
-  -e CORS_ORIGIN=http://localhost:8090 -e DATABASE_URL -e SUPABASE_URL \
-  -e SUPABASE_SERVICE_ROLE_KEY -e SUPABASE_JWT_SECRET tether-api:local
-curl localhost:8081/health/ready
-
-cd ../tether-web
-docker build --build-arg NEXT_PUBLIC_API_URL=http://localhost:8081 -t tether-web:local .
-docker run -d --name tether-web-test --network host -e PORT=8090 tether-web:local
-# open http://localhost:8090/login
+cd gym-app-backend
+npm run prisma:deploy
+gcloud run deploy tether-api --source . --region europe-north1 --quiet
 ```
 
-`--network host` lets the portal's server reach the API on `localhost:8081`.
+Env vars, secrets and the service account carry over between deploys.
+`CORS_ORIGIN` is `*` until the portal is deployed — then lock it (section 3).
 
 ---
 
