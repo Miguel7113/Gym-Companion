@@ -46,8 +46,9 @@ docker run -d --name tether-api-test -p 8081:8080 -e NODE_ENV=production \
 curl localhost:8081/health/ready
 
 cd ../tether-web
-docker build --build-arg NEXT_PUBLIC_API_URL=http://localhost:8081 -t tether-web:local .
-docker run -d --name tether-web-test --network host -e PORT=8090 tether-web:local
+docker build -t tether-web:local .
+docker run -d --name tether-web-test --network host -e PORT=8090 \
+  -e API_URL=http://localhost:8081 tether-web:local
 # open http://localhost:8090/login
 ```
 
@@ -194,49 +195,22 @@ npm run prisma:deploy
 
 ## 3. Deploy the portal (`tether-web`)
 
-`NEXT_PUBLIC_API_URL` is **build-time**. Rebuild the portal whenever the API URL changes.
+The portal only calls the API from its server (server components and server
+actions), so the API address is a runtime env var, `API_URL`. Changing it needs
+a redeploy but no rebuild. `.env.local` is excluded from the upload.
 
 ```bash
 cd tether-web
-
-gcloud builds submit \
-  --config=- <<EOF
-steps:
-  - name: gcr.io/cloud-builders/docker
-    args:
-      - build
-      - --build-arg=NEXT_PUBLIC_API_URL=$API_URL
-      - -t
-      - $REPO/tether-web:latest
-      - .
-images:
-  - $REPO/tether-web:latest
-EOF
-```
-
-Or with a one-liner docker build locally then push:
-
-```bash
-docker build \
-  --build-arg NEXT_PUBLIC_API_URL=$API_URL \
-  -t $REPO/tether-web:latest .
-docker push $REPO/tether-web:latest
-```
-
-Deploy:
-
-```bash
 gcloud run deploy tether-web \
-  --image=$REPO/tether-web:latest \
+  --source . \
   --region=$REGION \
-  --platform=managed \
   --allow-unauthenticated \
-  --port=8080 \
   --memory=512Mi \
   --cpu=1 \
   --min-instances=0 \
   --max-instances=3 \
-  --set-env-vars=NODE_ENV=production,COOKIE_SECURE=true
+  --set-env-vars=NODE_ENV=production,COOKIE_SECURE=true,API_URL=$API_URL \
+  --quiet
 ```
 
 Save portal URL:
@@ -318,7 +292,7 @@ side-loading, rejected by the Play Store.
 | Symptom | Fix |
 |---------|-----|
 | `--source` deploy: compute SA lacks `storage.objects.get` | New projects: `gcloud projects add-iam-policy-binding PROJECT --member=serviceAccount:NUMBER-compute@developer.gserviceaccount.com --role=roles/run.builder` |
-| Portal login network error | Rebuild web with correct `NEXT_PUBLIC_API_URL`; confirm API URL in browser Network tab |
+| Portal login network error | Check `API_URL` on `tether-web` (`gcloud run services describe tether-web`) and that the API's `/health/ready` is OK |
 | API crash on boot | Check Cloud Run logs; secret values / `DATABASE_URL` pooler |
 | Prisma connection errors | Use Supabase pooler URL; confirm IP allowlist / Supabase network |
 | Cookies not sticking | Ensure `COOKIE_SECURE=true` and HTTPS Cloud Run URL |
@@ -349,7 +323,7 @@ gcloud run services logs read tether-web --region=$REGION --limit=50
 - [ ] Secrets created + SA accessor role
 - [ ] `tether-api` deployed; `$API_URL` works
 - [ ] Prisma migrations applied on production DB
-- [ ] `tether-web` built **with** `$API_URL` and deployed
+- [ ] `tether-web` deployed with `API_URL=$API_URL`
 - [ ] `CORS_ORIGIN` set to `$WEB_URL`
 - [ ] Staff login smoke passed
 - [ ] Flutter `API_BASE_URL` pointed at `$API_URL`

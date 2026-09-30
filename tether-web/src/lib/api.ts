@@ -1,5 +1,4 @@
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3001';
+import { API_BASE_URL as API_URL } from './server-api';
 
 export async function apiFetch<T>(
   path: string,
