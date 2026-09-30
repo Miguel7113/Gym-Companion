@@ -8,6 +8,11 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
+  @Get('unread-count')
+  unreadCount(@CurrentMember() member: { userId: string; gymId: string }) {
+    return this.notificationsService.unreadCount(member.userId, member.gymId);
+  }
+
   @Get()
   list(
     @CurrentMember() member: { userId: string; gymId: string },

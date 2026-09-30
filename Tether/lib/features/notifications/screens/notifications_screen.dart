@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../social/screens/buddies_screen.dart';
 import '../../social/services/social_extras_service.dart';
+import '../../workouts/screens/workout_session_screen.dart';
+import '../../workouts/services/workout_service.dart';
 
 /// Real in-app notifications inbox (buddy requests, sessions, etc.).
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -43,6 +46,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   Future<void> _markAllRead() async {
     await ref.read(socialExtrasServiceProvider).markAllNotificationsRead();
+    ref.invalidate(unreadNotificationCountProvider);
     await _load();
   }
 
@@ -51,7 +55,57 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       await ref
           .read(socialExtrasServiceProvider)
           .markNotificationRead(item.id);
+      ref.invalidate(unreadNotificationCountProvider);
       await _load();
+    }
+    if (!mounted) return;
+
+    switch (item.type) {
+      case 'buddy_request':
+      case 'buddy_accepted':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const BuddiesScreen()),
+        );
+        break;
+      case 'buddy_session':
+        final rawId = item.payload['sessionId'];
+        await _openBuddySession(rawId is String ? rawId : null);
+        break;
+      default:
+        break;
+    }
+  }
+
+  Future<void> _openBuddySession(String? sessionId) async {
+    if (sessionId == null || sessionId.isEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const BuddiesScreen()),
+      );
+      return;
+    }
+    try {
+      final session =
+          await ref.read(workoutServiceProvider).getSession(sessionId);
+      if (!mounted) return;
+      if (session.endedAt != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That workout has already ended')),
+        );
+        return;
+      }
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WorkoutSessionScreen(session: session),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Couldn't open that workout: $e")),
+      );
     }
   }
 

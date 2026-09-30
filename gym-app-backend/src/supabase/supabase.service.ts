@@ -134,6 +134,30 @@ export class SupabaseService {
     if (error) throw error;
   }
 
+  /**
+   * Public URL for a path in the avatars bucket.
+   * `version` busts cached images after a replacement upload.
+   */
+  publicAvatarUrl(
+    path: string | null | undefined,
+    version?: Date | string | number | null,
+  ): string | null {
+    if (!path) return null;
+    const base = this.config.get<string>('SUPABASE_URL')?.replace(/\/$/, '');
+    if (!base) return null;
+    const encoded = path
+      .split('/')
+      .map((part) => encodeURIComponent(part))
+      .join('/');
+    const stamp =
+      version instanceof Date
+        ? version.getTime()
+        : version == null || version === ''
+          ? ''
+          : version;
+    return `${base}/storage/v1/object/public/avatars/${encoded}${stamp ? `?v=${stamp}` : ''}`;
+  }
+
   async createPostImageSignedUrl(
     path: string,
     expiresInSeconds = 3600,

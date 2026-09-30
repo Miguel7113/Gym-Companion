@@ -27,7 +27,8 @@ describe('MembersService', () => {
       gymStaff: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const social = { getMemberPosts: jest.fn().mockResolvedValue([]) };
-    const service = new MembersService(prisma as any, social as any);
+    const supabase = { publicAvatarUrl: jest.fn().mockReturnValue(null) };
+    const service = new MembersService(prisma as any, social as any, supabase as any);
 
     const result = await service.getProfile(
       'viewer-1',
@@ -71,7 +72,8 @@ describe('MembersService', () => {
         gymStaff: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       const social = { getMemberPosts: jest.fn().mockResolvedValue([]) };
-      return new MembersService(prisma as any, social as any);
+      const supabase = { publicAvatarUrl: jest.fn().mockReturnValue(null) };
+      return new MembersService(prisma as any, social as any, supabase as any);
     };
 
     const peer = await makeService().getProfile('viewer-1', 'gym-1', 'member-1', 20, 0);
@@ -91,10 +93,51 @@ describe('MembersService', () => {
     const prisma = {
       user: { findFirst: jest.fn().mockResolvedValue(null) },
     };
-    const service = new MembersService(prisma as any, {} as any);
+    const service = new MembersService(prisma as any, {} as any, {
+      publicAvatarUrl: () => null,
+    } as any);
 
     await expect(
       service.getProfile('viewer-1', 'gym-1', 'member-from-gym-2', 20, 0),
     ).rejects.toThrow('Member not found');
+  });
+
+  it('returns a public avatar URL and keeps body stats on the owner profile', async () => {
+    const prisma = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'member-1',
+          displayName: 'Member One',
+          email: 'one@example.com',
+          phone: null,
+          avatarPath: 'auth-1/avatar.jpg',
+          bodyWeightKg: '82.5',
+          heightCm: '178',
+          updatedAt: new Date('2026-09-27T12:00:00Z'),
+          authProviderId: 'auth-1',
+          gym: { id: 'gym-1', name: 'Gym One', timezone: 'UTC' },
+        }),
+      },
+      workoutSession: { findMany: jest.fn().mockResolvedValue([]) },
+      workoutTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      gymStaff: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const supabase = {
+      publicAvatarUrl: jest.fn().mockReturnValue('https://cdn.example/avatar.jpg'),
+    };
+    const service = new MembersService(
+      prisma as any,
+      { getMemberPosts: jest.fn().mockResolvedValue([]) } as any,
+      supabase as any,
+    );
+
+    const own = await service.getProfile('member-1', 'gym-1', 'member-1', 20, 0);
+    expect(own.avatarUrl).toBe('https://cdn.example/avatar.jpg');
+    expect(own).toMatchObject({ bodyWeightKg: 82.5, heightCm: 178 });
+
+    const peer = await service.getProfile('viewer-1', 'gym-1', 'member-1', 20, 0);
+    expect(peer.avatarUrl).toBe('https://cdn.example/avatar.jpg');
+    expect(peer).not.toHaveProperty('bodyWeightKg');
+    expect(peer).not.toHaveProperty('heightCm');
   });
 });

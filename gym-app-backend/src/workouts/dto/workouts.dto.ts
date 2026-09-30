@@ -8,8 +8,10 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  Max,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -106,6 +108,7 @@ export class SaveProgramDto {
 export class UpdateUserProfileDto {
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   displayName?: string;
 
   @IsOptional()
@@ -113,12 +116,24 @@ export class UpdateUserProfileDto {
   gender?: string;
 
   @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsNumber()
-  bodyWeightKg?: number;
+  @Min(20)
+  @Max(400)
+  bodyWeightKg?: number | null;
 
   @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsNumber()
-  heightCm?: number;
+  @Min(50)
+  @Max(250)
+  heightCm?: number | null;
+
+  /** Object path inside the avatars bucket: `{authUserId}/avatar.jpg`. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  avatarPath?: string | null;
 }
 
 export class RoutineExerciseDto {

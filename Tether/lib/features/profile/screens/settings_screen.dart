@@ -8,6 +8,7 @@ import '../../../core/sync/background_sync.dart';
 import '../../auth/services/auth_service.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import '../../social/screens/buddies_screen.dart';
+import 'edit_profile_screen.dart';
 
 /// Settings lives under Profile (not a bottom tab).
 class SettingsScreen extends ConsumerWidget {
@@ -43,13 +44,10 @@ class SettingsScreen extends ConsumerWidget {
               _SettingsRow(
                 icon: Symbols.person,
                 label: 'Edit profile',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Profile editing is coming soon'),
-                    ),
-                  );
-                },
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                ),
               ),
               _SettingsRow(
                 icon: Symbols.group,

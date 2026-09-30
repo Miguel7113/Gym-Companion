@@ -27,6 +27,13 @@ export class NotificationsService {
     });
   }
 
+  async unreadCount(userId: string, gymId: string) {
+    const count = await this.prisma.appNotification.count({
+      where: { userId, gymId, readAt: null },
+    });
+    return { count };
+  }
+
   list(userId: string, gymId: string, limit = 50) {
     return this.prisma.appNotification.findMany({
       where: { userId, gymId },

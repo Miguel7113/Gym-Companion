@@ -28,6 +28,8 @@ class MemberProfile {
   final String memberId;
   final String displayName;
   final String? avatarUrl;
+  final double? bodyWeightKg;
+  final double? heightCm;
   final String? staffRole;
   final String gymName;
   final bool isOwnProfile;
@@ -40,6 +42,8 @@ class MemberProfile {
     required this.memberId,
     required this.displayName,
     this.avatarUrl,
+    this.bodyWeightKg,
+    this.heightCm,
     this.staffRole,
     required this.gymName,
     required this.isOwnProfile,
@@ -55,6 +59,8 @@ class MemberProfile {
       memberId: json['memberId'] as String,
       displayName: json['displayName'] as String? ?? 'Gym member',
       avatarUrl: json['avatarUrl'] as String?,
+      bodyWeightKg: (json['bodyWeightKg'] as num?)?.toDouble(),
+      heightCm: (json['heightCm'] as num?)?.toDouble(),
       staffRole: json['staffRole'] as String?,
       gymName: gym['name'] as String? ?? 'Your gym',
       isOwnProfile: json['isOwnProfile'] as bool? ?? false,

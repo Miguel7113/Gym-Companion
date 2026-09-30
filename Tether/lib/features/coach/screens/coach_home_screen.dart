@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/providers/nav_provider.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../notifications/widgets/activity_bell.dart';
 import '../../home/screens/home_screen.dart';
 import '../../notices/screens/notices_screen.dart';
 import '../../workouts/screens/routines_screen.dart';
@@ -32,6 +33,12 @@ class CoachHomeScreen extends ConsumerWidget {
               ),
         ),
         centerTitle: false,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: ActivityBell(),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppTheme.containerMargin),

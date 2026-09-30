@@ -20,6 +20,24 @@ class ProfileService {
     );
     return MemberProfile.fromJson(response.data as Map<String, dynamic>);
   }
+
+  Future<void> updateMyProfile({
+    required String displayName,
+    double? bodyWeightKg,
+    double? heightCm,
+    String? avatarPath,
+    bool includeAvatar = false,
+  }) async {
+    await _api.patch(
+      '/users/me/profile',
+      data: {
+        'displayName': displayName,
+        'bodyWeightKg': bodyWeightKg,
+        'heightCm': heightCm,
+        if (includeAvatar) 'avatarPath': avatarPath,
+      },
+    );
+  }
 }
 
 final profileServiceProvider = Provider<ProfileService>((ref) {

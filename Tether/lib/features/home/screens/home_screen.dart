@@ -6,7 +6,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/media_catalog.dart';
 import '../../../core/providers/nav_provider.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../notifications/screens/notifications_screen.dart';
+import '../../notifications/widgets/activity_bell.dart';
 import '../../workouts/models/workout_models.dart';
 import '../../workouts/screens/workout_session_screen.dart';
 import '../../notices/screens/notices_screen.dart';
@@ -72,37 +72,9 @@ class _HomeAppBar extends ConsumerWidget implements PreferredSizeWidget {
       ),
       centerTitle: false,
       actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            ),
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(
-                  Symbols.notifications,
-                  size: 24,
-                  color: AppTheme.onSurface,
-                ),
-                Positioned(
-                  top: -1,
-                  right: -1,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryContainer,
-                      shape: BoxShape.circle,
-                      boxShadow: AppTheme.neonGlow(opacity: 0.45, blur: 6),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        const Padding(
+          padding: EdgeInsets.only(right: 8),
+          child: ActivityBell(),
         ),
       ],
     );

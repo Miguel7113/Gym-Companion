@@ -75,4 +75,31 @@ describe('WorkoutsService routine runs', () => {
       isNot: null,
     });
   });
+
+  it('treats multiple equipment filters as any-of', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = { exercise: { findMany } };
+    const service = new WorkoutsService(prisma as any, {} as any, {} as any);
+
+    await service.listExercises(undefined, undefined, undefined, 'barbell, cable');
+
+    expect(findMany.mock.calls[0][0].where.equipments).toEqual({
+      hasSome: ['barbell', 'cable'],
+    });
+  });
+
+  it('rejects an avatar stored outside the member folder', async () => {
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ authProviderId: 'auth-1' }),
+        update: jest.fn(),
+      },
+    };
+    const service = new WorkoutsService(prisma as any, {} as any, {} as any);
+
+    await expect(
+      service.updateProfile('user-1', { avatarPath: 'someone-else/avatar.jpg' }),
+    ).rejects.toThrow('Avatar must be stored in your own folder');
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
 });

@@ -216,6 +216,11 @@ class WorkoutService {
 
   // ─── Sessions ──────────────────────────────────────────────────────────────
 
+  Future<WorkoutSession> getSession(String sessionId) async {
+    final response = await _apiClient.get('/workouts/sessions/$sessionId');
+    return WorkoutSession.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<WorkoutSession> createSession(CreateSessionDto dto) async {
     final response = await _apiClient.post('/workouts/sessions', data: dto.toJson());
     return WorkoutSession.fromJson(response.data as Map<String, dynamic>);

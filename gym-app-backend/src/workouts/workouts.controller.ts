@@ -315,6 +315,14 @@ export class WorkoutsController {
     );
   }
 
+  @Get('workouts/sessions/:id')
+  getSession(
+    @CurrentMember() member: { userId: string; gymId: string },
+    @Param('id') id: string,
+  ) {
+    return this.workoutsService.getSession(member.userId, member.gymId, id);
+  }
+
   @Patch('workouts/sessions/:id')
   updateSession(
     @CurrentMember() member: { userId: string },

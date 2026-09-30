@@ -76,9 +76,11 @@ class OfflineWorkoutService {
           query: query,
           bodyPart: bodyPart,
           category: category,
-          // Fetch the unfiltered set when multiple equipment values are
-          // selected, then apply the local OR filter below.
-          equipment: equipment?.length == 1 ? equipment!.first : null,
+          // Comma-separated values are any-of on the API. The local filter
+          // below uses the same rule.
+          equipment: (equipment == null || equipment.isEmpty)
+              ? null
+              : equipment.join(','),
         );
         // Seed these results into cache for next time
         await _exercises.upsertAll(apiResults);

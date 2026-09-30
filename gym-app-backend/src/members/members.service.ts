@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SocialService } from '../social/social.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { UpdateMemberDto } from './dto/update-member.dto';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class MembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly social: SocialService,
+    private readonly supabase: SupabaseService,
   ) {}
 
   /**
@@ -141,8 +143,12 @@ export class MembersService {
         displayName: true,
         email: true,
         phone: true,
+        avatarPath: true,
+        bodyWeightKg: true,
+        heightCm: true,
         subscriptionTier: true,
         authProviderId: true,
+        updatedAt: true,
         gym: { select: { id: true, name: true, timezone: true } },
       },
     });
@@ -220,8 +226,15 @@ export class MembersService {
       memberId: member.id,
       displayName: member.displayName ?? 'Gym member',
       ...contact,
+      ...(isOwnProfile
+        ? {
+            bodyWeightKg:
+              member.bodyWeightKg == null ? null : Number(member.bodyWeightKg),
+            heightCm: member.heightCm == null ? null : Number(member.heightCm),
+          }
+        : {}),
       subscriptionTier: member.subscriptionTier,
-      avatarUrl: null,
+      avatarUrl: this.supabase.publicAvatarUrl(member.avatarPath, member.updatedAt),
       staffRole: staff?.role ?? null,
       gym: { id: member.gym.id, name: member.gym.name },
       isOwnProfile,

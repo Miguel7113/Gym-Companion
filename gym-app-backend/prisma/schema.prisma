@@ -76,6 +76,7 @@ model User {
   email            String?
   phone            String?
   displayName      String?  @map("display_name")
+  avatarPath       String?  @map("avatar_path")
   gender           String?  // 'male' | 'female' | 'other' | null
   bodyWeightKg     Decimal? @map("body_weight_kg") @db.Decimal(5, 2)
   heightCm         Decimal? @map("height_cm") @db.Decimal(5, 1)

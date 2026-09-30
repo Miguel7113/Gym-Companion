@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BuddiesService } from '../buddies/buddies.service';
@@ -32,12 +32,21 @@ export class WorkoutsService {
     offset = 0,
     isCustom?: boolean,
   ) {
+    const equipments = (equipment ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
     return this.prisma.exercise.findMany({
       where: {
         ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
         ...(bodyPart ? { bodyParts: { has: bodyPart } } : {}),
         ...(category ? { category: { equals: category, mode: 'insensitive' as const } } : {}),
-        ...(equipment ? { equipments: { has: equipment } } : {}),
+        ...(equipments.length === 1
+          ? { equipments: { has: equipments[0] } }
+          : equipments.length > 1
+            ? { equipments: { hasSome: equipments } }
+            : {}),
         ...(isCustom !== undefined ? { isCustom } : {}),
       },
       select: {
@@ -614,19 +623,68 @@ export class WorkoutsService {
   // ─── User Profile ──────────────────────────────────────────────────────────
 
   async updateProfile(userId: string, dto: UpdateUserProfileDto) {
-    return this.prisma.user.update({
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { authProviderId: true },
+    });
+    if (!existing) throw new NotFoundException('Member not found');
+
+    let displayName: string | undefined;
+    if (dto.displayName !== undefined) {
+      displayName = dto.displayName.trim();
+      if (!displayName) {
+        throw new BadRequestException('Display name is required');
+      }
+    }
+
+    let avatarPath: string | null | undefined;
+    if (dto.avatarPath !== undefined) {
+      const path = dto.avatarPath?.trim() ?? '';
+      if (!path) {
+        avatarPath = null;
+      } else {
+        this.assertOwnAvatarPath(path, existing.authProviderId);
+        avatarPath = path;
+      }
+    }
+
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
-        ...(dto.displayName !== undefined ? { displayName: dto.displayName } : {}),
+        ...(displayName !== undefined ? { displayName } : {}),
         ...(dto.gender !== undefined ? { gender: dto.gender } : {}),
         ...(dto.bodyWeightKg !== undefined ? { bodyWeightKg: dto.bodyWeightKg } : {}),
         ...(dto.heightCm !== undefined ? { heightCm: dto.heightCm } : {}),
+        ...(avatarPath !== undefined ? { avatarPath } : {}),
       },
       select: {
         id: true, displayName: true, gender: true,
-        bodyWeightKg: true, heightCm: true, email: true,
+        bodyWeightKg: true, heightCm: true, email: true, avatarPath: true,
       },
     });
+
+    return {
+      ...updated,
+      bodyWeightKg:
+        updated.bodyWeightKg == null ? null : Number(updated.bodyWeightKg),
+      heightCm: updated.heightCm == null ? null : Number(updated.heightCm),
+    };
+  }
+
+  private assertOwnAvatarPath(path: string, authProviderId: string | null) {
+    if (!authProviderId) {
+      throw new ForbiddenException('Avatar upload is not available for this account');
+    }
+    const parts = path.split('/');
+    const file = parts[1] ?? '';
+    if (
+      parts.length !== 2 ||
+      path.includes('..') ||
+      parts[0] !== authProviderId ||
+      !/^[A-Za-z0-9._-]+\.(jpe?g|png|webp)$/i.test(file)
+    ) {
+      throw new ForbiddenException('Avatar must be stored in your own folder');
+    }
   }
 
   // ─── Sessions ──────────────────────────────────────────────────────────────
@@ -756,6 +814,36 @@ export class WorkoutsService {
     const isParticipant = session.participants.length > 0;
     if (!isHost && !isParticipant) throw new ForbiddenException();
     return session;
+  }
+
+  async getSession(userId: string, gymId: string, sessionId: string) {
+    const session = await this.prisma.workoutSession.findFirst({
+      where: {
+        id: sessionId,
+        gymId,
+        deletedAt: null,
+        OR: [{ userId }, { participants: { some: { userId } } }],
+      },
+      include: {
+        sets: {
+          where: { deletedAt: null },
+          include: { exercise: true },
+          orderBy: { setNumber: 'asc' },
+        },
+      },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+    return {
+      ...session,
+      sets: session.sets.map((set) => ({
+        ...set,
+        weightKg: set.weightKg == null ? null : Number(set.weightKg),
+        rpe: set.rpe == null ? null : Number(set.rpe),
+        assistKg: set.assistKg == null ? null : Number(set.assistKg),
+        distanceM: set.distanceM == null ? null : Number(set.distanceM),
+        speedKph: set.speedKph == null ? null : Number(set.speedKph),
+      })),
+    };
   }
 
   async updateSession(userId: string, sessionId: string, dto: UpdateSessionDto) {

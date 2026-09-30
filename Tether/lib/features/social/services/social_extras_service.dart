@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/api_provider.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../workouts/models/workout_models.dart';
 import '../../workouts/services/workout_service.dart';
 
@@ -97,6 +98,7 @@ class AppNotificationItem {
   final String body;
   final DateTime createdAt;
   final DateTime? readAt;
+  final Map<String, dynamic> payload;
 
   const AppNotificationItem({
     required this.id,
@@ -105,6 +107,7 @@ class AppNotificationItem {
     required this.body,
     required this.createdAt,
     this.readAt,
+    this.payload = const {},
   });
 
   bool get isUnread => readAt == null;
@@ -119,6 +122,7 @@ class AppNotificationItem {
         readAt: json['readAt'] != null
             ? DateTime.parse(json['readAt'] as String)
             : null,
+        payload: (json['payload'] as Map?)?.cast<String, dynamic>() ?? const {},
       );
 }
 
@@ -185,6 +189,14 @@ class SocialExtrasService {
     await _ref.read(apiClientProvider).post('/buddies/$id/cancel');
   }
 
+  Future<int> unreadNotificationCount() async {
+    final response =
+        await _ref.read(apiClientProvider).get('/notifications/unread-count');
+    final data = response.data;
+    if (data is Map) return (data['count'] as num?)?.toInt() ?? 0;
+    return 0;
+  }
+
   Future<List<AppNotificationItem>> listNotifications() async {
     final response = await _ref.read(apiClientProvider).get('/notifications');
     return (response.data as List)
@@ -212,4 +224,13 @@ final homeMembersDirectoryProvider =
 
 final homeCoachesProvider = FutureProvider<List<GymCoach>>((ref) async {
   return ref.read(socialExtrasServiceProvider).listCoaches();
+});
+
+final unreadNotificationCountProvider = FutureProvider<int>((ref) async {
+  ref.watch(authStateStreamProvider);
+  try {
+    return await ref.read(socialExtrasServiceProvider).unreadNotificationCount();
+  } catch (_) {
+    return 0;
+  }
 });
