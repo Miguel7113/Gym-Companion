@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/media/image_crop.dart';
+
 class PostMediaService {
   final ImagePicker _picker;
   PostMediaService([ImagePicker? picker]) : _picker = picker ?? ImagePicker();
@@ -12,12 +14,11 @@ class PostMediaService {
   }) async {
     final file = await _picker.pickImage(
       source: source,
-      imageQuality: 85,
-      maxWidth: 1600,
-      maxHeight: 1600,
+      maxWidth: 2400,
+      maxHeight: 2400,
     );
     if (file == null) return null;
-    return file;
+    return cropPickedImage(file, shape: ImageCropShape.feedPhoto);
   }
 
   Future<String> uploadWorkoutPhoto(XFile file) async {

@@ -70,6 +70,7 @@ dependencies:
   # Google Fonts for custom typography
   google_fonts: ^6.1.0
   material_symbols_icons: ^4.2951.0
+  image_cropper: ^12.2.1
 
 dev_dependencies:
   flutter_test:

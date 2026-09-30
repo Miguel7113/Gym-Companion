@@ -1781,7 +1781,7 @@ class _WorkoutCompleteScreenState extends ConsumerState<WorkoutCompleteScreen> {
                 GestureDetector(
                   onTap: _isUploadingPhoto ? null : _pickPhoto,
                   child: Container(
-                    height: 160,
+                    height: _selectedPhoto != null ? null : 160,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                       border: Border.all(
@@ -1793,10 +1793,13 @@ class _WorkoutCompleteScreenState extends ConsumerState<WorkoutCompleteScreen> {
                         ? ClipRRect(
                             borderRadius:
                                 BorderRadius.circular(AppTheme.radiusXl),
-                            child: Image.file(
-                              File(_selectedPhoto!.path),
-                              fit: BoxFit.cover,
-                              width: double.infinity,
+                            child: AspectRatio(
+                              aspectRatio: 16 / 9,
+                              child: Image.file(
+                                File(_selectedPhoto!.path),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                              ),
                             ),
                           )
                         : Column(
