@@ -4,18 +4,39 @@ import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-
 
 @Injectable()
 export class SupabaseService {
+  /** Service-role client for storage and admin calls. Never holds a user session. */
   private readonly client: SupabaseClient;
 
   constructor(private config: ConfigService) {
-    this.client = createClient(
+    this.client = this.createIsolatedClient();
+  }
+
+  /**
+   * supabase-js keeps the session from signIn/verify/refresh on the client and
+   * then sends that user's JWT on storage and database calls instead of the
+   * service key. Flows that produce a session get a throwaway client so the
+   * shared one keeps acting as the service role.
+   */
+  private authFlowClient(): SupabaseClient {
+    return this.createIsolatedClient();
+  }
+
+  private createIsolatedClient(): SupabaseClient {
+    return createClient(
       this.config.get<string>('SUPABASE_URL')!,
       this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+      },
     );
   }
 
   async sendEmailOtp(email: string) {
-    const { error } = await this.client.auth.signInWithOtp({
+    const { error } = await this.authFlowClient().auth.signInWithOtp({
       email,
       options: {
         // Redirect back into the app via the registered deep link scheme.
@@ -28,13 +49,13 @@ export class SupabaseService {
   }
 
   async sendPhoneOtp(phone: string) {
-    const { error } = await this.client.auth.signInWithOtp({ phone });
+    const { error } = await this.authFlowClient().auth.signInWithOtp({ phone });
     if (error) throw error;
   }
 
   async verifyOtp(params: { email?: string; phone?: string; token: string }): Promise<Session> {
     const { email, phone, token } = params;
-    const { data, error } = await this.client.auth.verifyOtp(
+    const { data, error } = await this.authFlowClient().auth.verifyOtp(
       email
         ? { email, token, type: 'email' }
         : { phone: phone!, token, type: 'sms' },
@@ -47,7 +68,7 @@ export class SupabaseService {
   }
 
   async signInWithPassword(email: string, password: string): Promise<Session> {
-    const { data, error } = await this.client.auth.signInWithPassword({
+    const { data, error } = await this.authFlowClient().auth.signInWithPassword({
       email,
       password,
     });
@@ -86,7 +107,7 @@ export class SupabaseService {
   /// Refreshes a session so the new JWT claims from updateUserMetadata
   /// are immediately live without requiring the user to log in again.
   async refreshSession(refreshToken: string): Promise<Session> {
-    const { data, error } = await this.client.auth.refreshSession({
+    const { data, error } = await this.authFlowClient().auth.refreshSession({
       refresh_token: refreshToken,
     });
     if (error) throw error;
@@ -128,7 +149,7 @@ export class SupabaseService {
   /// The reset link redirects to the app's deep link scheme so the
   /// SetPassword screen can handle it.
   async sendPasswordReset(email: string): Promise<void> {
-    const { error } = await this.client.auth.resetPasswordForEmail(email, {
+    const { error } = await this.authFlowClient().auth.resetPasswordForEmail(email, {
       redirectTo: 'io.supabase.tether://login-callback/',
     });
     if (error) throw error;
