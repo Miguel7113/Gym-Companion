@@ -17,6 +17,7 @@ Database / Auth / Storage stay on **Supabase**. Flutter points at the API URL af
 | Region | `europe-north1` (closest to Supabase `eu-north-1`, Stockholm) |
 | API | `tether-api` → https://tether-api-1069329007311.europe-north1.run.app |
 | Runtime SA | `tether-api@tether-pilot.iam.gserviceaccount.com` (secret accessor only) |
+| Portal | `tether-web` → https://tether-web-7g2is2ydta-lz.a.run.app (SA `tether-web@…`, no roles; `API_URL` env var) |
 | DB secret | Supabase transaction pooler, port `6543`, `pgbouncer=true&connection_limit=5` |
 
 Redeploy the API after backend changes (run migrations first if there are new ones).

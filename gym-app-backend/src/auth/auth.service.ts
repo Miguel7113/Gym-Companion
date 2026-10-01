@@ -384,13 +384,19 @@ export class AuthService {
   }
 
   async staffLogin(dto: StaffLoginDto) {
-    const session = await this.supabase.signInWithPassword(dto.email, dto.password);
-    const staff = await this.prisma.gymStaff.findUnique({
-      where: { email: dto.email.toLowerCase() },
-    });
+    const email = dto.email.toLowerCase();
+    // One message for unknown staff and bad passwords, so the portal login
+    // can't be used to discover which emails belong to staff.
+    const invalid = new UnauthorizedException('Incorrect email or password.');
 
-    if (!staff) {
-      throw new ConflictException('Not a registered staff member.');
+    const staff = await this.prisma.gymStaff.findUnique({ where: { email } });
+    if (!staff) throw invalid;
+
+    let session: Awaited<ReturnType<typeof this.supabase.signInWithPassword>>;
+    try {
+      session = await this.supabase.signInWithPassword(email, dto.password);
+    } catch {
+      throw invalid;
     }
 
     if (!staff.authProviderId && session.user?.id) {

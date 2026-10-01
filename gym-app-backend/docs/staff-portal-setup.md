@@ -86,9 +86,10 @@ If login succeeds, the backend returns:
 
 ## Common failure cases
 
-### `Not a registered staff member`
+### `401 Incorrect email or password`
 
-The Supabase auth user exists, but there is no matching `gym_staff.email`.
+Either the password is wrong, or there is no `gym_staff` row with that email
+(lowercase). Both return the same message on purpose; check `gym_staff` first.
 
 ### Login works in Supabase but portal still fails
 
