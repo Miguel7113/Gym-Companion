@@ -72,7 +72,7 @@ class CoachHomeScreen extends ConsumerWidget {
             subtitle: 'Build and publish gym programs',
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const RoutinesScreen()),
+              MaterialPageRoute(builder: (_) => RoutinesScreen()),
             ),
           ),
           _CoachTile(
@@ -96,7 +96,7 @@ class CoachHomeScreen extends ConsumerWidget {
             subtitle: 'Open the member home view',
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              MaterialPageRoute(builder: (_) => const HomeScreenRedesignV2()),
             ),
           ),
         ],

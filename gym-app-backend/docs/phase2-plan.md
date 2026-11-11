@@ -1,40 +1,58 @@
 # Phase 2 Plan — App Redesign + Social Layer
 ### Gym Companion | Dawn Digital
 
+> **⚠️ NOTE:** This document contains historical planning from early 2024.  
+> **Current Status (Oct 2024):** Most of Phase 2 is now complete. See `docs/EXECUTION_PLAN.md` for current priorities.
+> 
+> **Food/Nutrition Feature:** Shelved indefinitely (migration 008 dropped all food tables). Sections mentioning food below are kept for historical context only.
+
 ---
 
-## Current State Audit
+## Current State Audit (Historical — as of Feb 2024)
 
-### What's working (Phase 1 backend ✅)
+### What was working (Phase 1 backend ✅)
 - Auth flow: OTP request/verify, staff login, roster matching — all wired up
 - Workout sessions, sets, exercises — full CRUD in backend
-- Food logs, food search, Open Food Facts proxy — backend complete
-- Prisma migration run, all 9 Phase 1 tables live in Supabase
-- Seed data: pilot gym, 32 exercises, 5 local Kenyan foods
+- ~~Food logs, food search, Open Food Facts proxy — backend complete~~ **(REMOVED — migration 008)**
+- Prisma migration run in Supabase
+- Seed data: pilot gym, 873 exercises from free-exercise-db
 
-### What's broken / incomplete right now
-| Issue | Location | Impact |
-|-------|----------|--------|
-| `SKIP_LOGIN_FOR_TESTING = true` | `main.dart` | Fixed — now set to false. No token → 401 on all guarded routes |
-| Token not persisted across app restarts | `ApiClient` | Token lives in memory only — killed when app closes |
-| `deleteFoodLog()` throws `UnimplementedError` | `food_service.dart` | Delete button crashes |
-| `updateFoodLog()` throws `UnimplementedError` | `food_service.dart` | No update endpoint on backend either |
-| `WorkoutService.updateSession()` calls `PUT` | `workout_service.dart` | Backend uses `PATCH`, not `PUT` — will 404 |
-| `WorkoutService.updateSet()` calls `PUT /workouts/sets/:id` | `workout_service.dart` | Endpoint doesn't exist on backend |
-| `WorkoutService.deleteSession()` / `deleteSet()` | `workout_service.dart` | No DELETE endpoints on backend |
-| All stats on Home + Profile screens are hardcoded `0` | `home_screen.dart`, `profile_screen.dart` | Placeholder UI only |
-| `userId = 'user_id_placeholder'` | `food_screen.dart` | Auth state not wired to screens |
-| No session persistence (logout = lose token) | `auth_service.dart` | User must re-OTP every cold start |
-| No `social/` feature folder | mobile app | Phase 2 not started |
-| No `ai_companion/` feature folder | mobile app | Phase 3, not started |
-| No push notification setup | mobile + backend | Phase 2, not started |
-| No `GymStaff` auth_provider_id index | Prisma schema | Minor — missing index on staff guard lookups |
-| `foods` table missing `updatedAt` | Prisma schema | Inconsistent with other tables |
-| No Row Level Security on Supabase | Supabase config | All tables publicly readable if someone hits DB directly |
+### What was broken / incomplete (Historical)
+
+> **Note:** Most items in this list have been fixed. This is kept for historical reference.
+
+| Issue | Location | Status (Oct 2024) |
+|-------|----------|-------------------|
+| `SKIP_LOGIN_FOR_TESTING = true` | `main.dart` | ✅ FIXED — now false |
+| Token not persisted across app restarts | `ApiClient` | ✅ FIXED — Supabase SDK handles persistence |
+| ~~`deleteFoodLog()` throws `UnimplementedError`~~ | ~~`food_service.dart`~~ | ❌ N/A — Food feature removed |
+| ~~`updateFoodLog()` throws `UnimplementedError`~~ | ~~`food_service.dart`~~ | ❌ N/A — Food feature removed |
+| `WorkoutService.updateSession()` calls `PUT` | `workout_service.dart` | ✅ FIXED — Uses PATCH |
+| `WorkoutService.updateSet()` endpoint missing | `workout_service.dart` | ✅ FIXED — Endpoint added |
+| `WorkoutService.deleteSession()` / `deleteSet()` | `workout_service.dart` | ✅ FIXED — DELETE endpoints exist |
+| All stats on Home + Profile screens hardcoded `0` | `home_screen.dart`, `profile_screen.dart` | ✅ FIXED — Real API data |
+| ~~`userId = 'user_id_placeholder'`~~ | ~~`food_screen.dart`~~ | ❌ N/A — Food feature removed |
+| No session persistence | `auth_service.dart` | ✅ FIXED — Supabase handles it |
+| No `social/` feature folder | mobile app | ✅ FIXED — Fully implemented |
+| No `ai_companion/` feature folder | mobile app | ⏸️ DEFERRED — Phase 3 |
+| No push notification setup | mobile + backend | 🔴 TODO — High priority |
+| ~~`foods` table missing `updatedAt`~~ | ~~Prisma schema~~ | ❌ N/A — Food tables dropped |
+| No Row Level Security on Supabase | Supabase config | ✅ FIXED — Migration 009 |
 
 ---
 
-## Database — What to Add and When
+## ⚠️ HISTORICAL CONTENT BELOW
+
+The sections below are kept for reference but reflect early 2024 planning. Many items have been implemented or decisions reversed (e.g., food feature shelved).
+
+For current implementation status and next steps, see:
+- `docs/EXECUTION_PLAN.md` — current sprint priorities
+- `docs/CODEBASE_OVERVIEW.md` — what exists today
+- `docs/ISSUES.md` — known bugs and decisions log
+
+---
+
+## Database — What to Add and When (Historical)
 
 ### Add Now (before Phase 2 work starts)
 
@@ -163,10 +181,12 @@ Set these up now so you're not retrofitting later:
 ### What to redesign
 
 **Navigation**
-Add a 5th tab for Social (Phase 2). Consider renaming and reordering:
-- Home → Feed (social) for engagement
-- Move "Workouts" to tab 1 (it's the core feature)
-- Keep Food, Profile
+~~Add a 5th tab for Social (Phase 2).~~ **UPDATE:** Social is tab 3 of 4 tabs. Consider renaming and reordering:
+- Home (member view) / Coach Dashboard (staff view) ✅
+- Train (workouts) ✅
+- Feed (social) ✅
+- Profile ✅
+- ~~Food~~ **(REMOVED)**
 
 **Theme**
 Current theme is generic Material 3. For a gym app targeting Nairobi users:
@@ -177,90 +197,93 @@ Current theme is generic Material 3. For a gym app targeting Nairobi users:
 - Gym logo/branding surfaced on home screen using the `primaryColor` field already in the DB
 
 **Home Screen**
-Currently all static. Should show:
-- Greeting with user's actual display name (from auth state)
-- Today's workout (if one exists) or a "Start Workout" CTA
-- Calorie ring for today (vs a goal — even a hardcoded 2000 kcal goal for MVP)
-- Recent post from their gym's feed (Phase 2 hook)
-- Streak counter (requires `user_achievements` table)
+~~Currently all static.~~ **UPDATE (Oct 2024):** Fully implemented. Should show:
+- Greeting with user's actual display name (from auth state) ✅
+- Today's workout (if one exists) or a "Start Workout" CTA ✅
+- ~~Calorie ring for today~~ **(REMOVED — no food feature)**
+- Recent post from their gym's feed (Phase 2 hook) ✅
+- Streak counter ~~(requires `user_achievements` table)~~ ✅
 
 **Profile Screen**
-- Show real user data (name, email, gym name) from auth state
-- Working logout (currently `// TODO`)
-- Subscription tier badge
-- Stats pulled from real DB queries (workout count, streak)
+- Show real user data (name, email, gym name) from auth state ✅
+- ~~Working logout (currently `// TODO`)~~ ✅
+- Subscription tier badge ⏸️ (Phase 3)
+- Stats pulled from real DB queries (workout count, streak) ✅
 
 **Workouts Screen**
-- Remove the history screen being embedded — give it its own tab treatment or a full sheet
-- Make the "Start Workout" button more prominent
+- ~~Remove the history screen being embedded — give it its own tab treatment or a full sheet~~ ✅
+- ~~Make the "Start Workout" button more prominent~~ ✅
 
-**Food Screen**
-- Calorie progress bar at top (calories logged vs goal)
-- Macro rings (protein/carbs/fat)
-- Fix the broken delete/update calls
+~~**Food Screen**~~
+~~- Calorie progress bar at top (calories logged vs goal)~~
+~~- Macro rings (protein/carbs/fat)~~
+~~- Fix the broken delete/update calls~~
+**REMOVED** — Food feature shelved (migration 008)
 
 ---
 
-## Packages to Add
+## Packages to Add (Historical)
 
-For Phase 2 redesign, add to `pubspec.yaml`:
+> **UPDATE (Oct 2024):** Most of these are now in `pubspec.yaml`. Food/barcode scanner removed.
+
+For Phase 2 redesign, ~~add~~ added to `pubspec.yaml`:
 
 ```yaml
 # Auth persistence
-flutter_secure_storage: ^9.0.0   # store tokens securely
+~~flutter_secure_storage: ^9.0.0~~   # Not needed — Supabase SDK handles it
 
 # Supabase (consider using SDK directly for real-time features)
-supabase_flutter: ^2.3.0
+supabase_flutter: ^2.3.0  ✅ ADDED
 
 # UI
-google_fonts: ^6.1.0             # Poppins/Inter
-cached_network_image: ^3.3.1     # gym logos, avatars, post images
+google_fonts: ^6.1.0  ✅ ADDED
+cached_network_image: ^3.3.1  ✅ ADDED (v4.0.0)
 
 # Camera / media
-image_picker: ^1.0.7             # profile pic + post photos
-mobile_scanner: ^4.0.1           # barcode scanning (replaces placeholder)
+image_picker: ^1.0.7  ✅ ADDED
+~~mobile_scanner: ^4.0.1~~  # NOT ADDED — no food feature
 
 # Push notifications
-firebase_core: ^2.27.1
-firebase_messaging: ^14.7.20
-flutter_local_notifications: ^17.0.0
+firebase_core: ^2.27.1  ❌ TODO
+firebase_messaging: ^14.7.20  ❌ TODO
+flutter_local_notifications: ^17.0.0  ❌ TODO
 
 # Connectivity
-connectivity_plus: ^5.0.2        # offline detection
+connectivity_plus: ^5.0.2  ✅ ADDED (v6.0.3)
 
 # Misc
-intl: ^0.19.0                    # date formatting (already needed in food screen)
-timeago: ^3.6.1                  # "2 hours ago" style timestamps for social feed
+~~intl: ^0.19.0~~  # Not needed yet
+~~timeago: ^3.6.1~~  # Not needed — using custom relative time
 ```
 
 ---
 
-## Build Sequence (recommended order)
+## Build Sequence (Historical — mostly complete)
 
-### Step 1 — Foundation fixes (do first, unblocks everything else)
-1. Set up Supabase RLS policies + storage buckets
-2. Add `push_tokens` + social tables to Prisma, run migration
-3. Add `flutter_secure_storage` + wire up token persistence (store on login, load on startup)
-4. Wire auth state to screens — create a proper `AuthState` provider with user context
-5. Fix the broken endpoints: add DELETE for sessions/sets/food logs to backend
-6. Fix `PUT` vs `PATCH` mismatch in workout service
+### ~~Step 1 — Foundation fixes (do first, unblocks everything else)~~
+1. ~~Set up Supabase RLS policies + storage buckets~~ ✅ DONE
+2. ~~Add `push_tokens` + social tables to Prisma, run migration~~ ✅ DONE
+3. ~~Add `flutter_secure_storage` + wire up token persistence~~ ✅ DONE (Supabase SDK)
+4. ~~Wire auth state to screens~~ ✅ DONE — `currentUserProvider`
+5. ~~Fix the broken endpoints: add DELETE for sessions/sets~~ ✅ DONE / ~~food logs~~ N/A
+6. ~~Fix `PUT` vs `PATCH` mismatch in workout service~~ ✅ DONE
 
-### Step 2 — App redesign
-7. Add Google Fonts, update theme (dark default, custom typography)
-8. Redesign Home screen with real data (workout today, calorie ring, streak)
-9. Fix Profile screen (real name/email, working logout, real stats)
-10. Add barcode scanner to food flow (replaces the placeholder)
-11. Add image picker to profile
+### ~~Step 2 — App redesign~~
+7. ~~Add Google Fonts, update theme (dark default, custom typography)~~ ✅ DONE
+8. ~~Redesign Home screen with real data~~ ✅ DONE / ~~calorie ring~~ N/A
+9. ~~Fix Profile screen (real name/email, working logout, real stats)~~ ✅ DONE
+10. ~~Add barcode scanner to food flow~~ ❌ N/A — Food feature removed
+11. ~~Add image picker to profile~~ ✅ DONE
 
-### Step 3 — Phase 2 social
-12. Build `social/` feature: posts, likes, comments
-13. Build Social tab (gym-scoped feed)
-14. Auto-post achievements (new PR, streak milestone)
-15. Wire up push notifications (FCM setup + backend trigger)
+### ~~Step 3 — Phase 2 social~~
+12. ~~Build `social/` feature: posts, likes, comments~~ ✅ DONE
+13. ~~Build Social tab (gym-scoped feed)~~ ✅ DONE
+14. ~~Auto-post achievements (new PR, streak milestone)~~ ✅ DONE
+15. Wire up push notifications (FCM setup + backend trigger) ❌ TODO
 
 ### Step 4 — Admin portal
-16. Build basic Next.js admin portal: member list, roster upload, pending approvals, feed moderation
-17. This is the thing you need to show gym owners — build it before Phase 3
+16. Build basic Next.js admin portal: member list, roster upload, pending approvals, feed moderation ⏸️ IN PROGRESS
+17. This is the thing you need to show gym owners — build it before Phase 3 ⏸️ IN PROGRESS
 
 ---
 
@@ -436,3 +459,38 @@ connectivity_plus: ^5.0.2      # detect online/offline state
 - Spotify music suggestions
 - Data import (Strong/Hevy/Apple Health)
 - White-label build flavors
+
+
+---
+
+## Appendix: Food Feature Decision Log
+
+**Date:** September 2024  
+**Decision:** Shelve food/nutrition tracking indefinitely  
+**Implemented:** Migration 008 (`008_drop_food.sql`) — dropped all food-related tables
+
+### What was removed
+- `foods` table — Open Food Facts catalog + custom foods
+- `food_logs` table — daily food entries
+- `nutrition_goals` table — user calorie/macro targets
+- `water_logs` table — daily water intake
+- `meal_plans` + related tables — meal planning feature
+- User profile columns: `body_weight_kg`, `height_cm`, `age`, `activity_level`, `goal_type`
+
+### Why it was shelved
+1. **Scope creep** — Food tracking is complex (barcode scanning, nutrition APIs, meal planning) and would delay core workout/social features
+2. **Market fit uncertainty** — Gyms are primarily interested in workout tracking and retention. Nutrition is secondary and gyms often have external nutrition coaches.
+3. **API costs** — Quality nutrition data (Nutritionix, USDA) requires paid APIs. Open Food Facts has poor coverage for Kenyan/African foods.
+4. **Maintenance burden** — Food databases require constant updates. User-generated content needs moderation.
+
+### If it comes back
+- Start simple: basic calorie/macro counter with manual entry only
+- Partner with a nutrition API provider for African food coverage (or build a custom catalog)
+- Consider making it a premium feature to offset API costs
+- Build the Flutter UI separately and wire it to a new backend module
+
+### Design artifacts preserved
+- `Design Reference/stitch gympulse food and nutricion/` — UI mockups kept for reference
+- Schema diagrams in `docs/archive/planning/`
+
+**Do not remove this section** — it documents an important product decision and prevents future confusion about "missing" features referenced in early planning docs.

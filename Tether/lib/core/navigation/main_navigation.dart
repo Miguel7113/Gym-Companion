@@ -39,11 +39,24 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   List<Widget> _screensForRole(String? role) {
     final isStaff = role != null && {'coach', 'admin'}.contains(role.toLowerCase());
+    
+    // Always use redesigned home screen
+    final homeScreen = isStaff ? const CoachHomeScreen() : const HomeScreen();
+    
+    // Always use redesigned workouts screen
+    final workoutsScreen = const WorkoutsScreen();
+    
+    // Always use redesigned social/feed screen
+    final feedScreen = const SocialScreen();
+    
+    // Always use redesigned profile screen
+    final profileScreen = const ProfileScreen();
+    
     return [
-      isStaff ? const CoachHomeScreen() : const HomeScreen(),
-      const WorkoutsScreen(),
-      const SocialScreen(),
-      const ProfileScreen(),
+      homeScreen,
+      workoutsScreen,
+      feedScreen,
+      profileScreen,
     ];
   }
 

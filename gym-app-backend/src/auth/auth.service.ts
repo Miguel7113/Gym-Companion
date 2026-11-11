@@ -233,6 +233,12 @@ export class AuthService {
   //   { exists: true, hasPassword: false } → new member → proceed with OTP/magic link
   //   { exists: true, hasPassword: true }  → returning member → show LoginScreen
   async checkMember(dto: CheckMemberDto) {
+    // Staff always sign in with a password. Answering like a returning member
+    // keeps the app on one flow without revealing which emails are staff.
+    if (await this.findStaffForGym(dto.gymId, dto.email)) {
+      return { exists: true, hasPassword: true };
+    }
+
     const rosterMatch = await this.roster.findRosterMatch(
       dto.gymId,
       dto.email,
@@ -270,6 +276,15 @@ export class AuthService {
   // ── Password login ────────────────────────────────────────────────────────
   // Day-to-day login for returning members. No OTP, no magic link.
   async login(dto: LoginDto) {
+    // Coaches and admins of this gym use the same screen as members.
+    if (await this.findStaffForGym(dto.gymId, dto.email)) {
+      const { user, accessToken, refreshToken } = await this.coachLogin({
+        email: dto.email,
+        password: dto.password,
+      });
+      return { user, accessToken, refreshToken };
+    }
+
     // 1. Confirm still on roster (catches expelled members)
     const rosterMatch = await this.roster.findRosterMatch(
       dto.gymId,
@@ -376,11 +391,20 @@ export class AuthService {
     // Always return success — don't reveal whether an email is on the roster
     // to prevent enumeration attacks. The member will only get an email if
     // they're actually registered.
-    if (rosterMatch && rosterMatch.status !== 'pending') {
+    const isStaff = await this.findStaffForGym(dto.gymId, dto.email);
+    if (isStaff || (rosterMatch && rosterMatch.status !== 'pending')) {
       await this.supabase.sendPasswordReset(dto.email);
     }
 
     return { sent: true };
+  }
+
+  private async findStaffForGym(gymId: string, email?: string | null) {
+    if (!email) return null;
+    const staff = await this.prisma.gymStaff.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+    return staff?.gymId === gymId ? staff : null;
   }
 
   async staffLogin(dto: StaffLoginDto) {

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,6 +11,7 @@ class PostMediaService {
   PostMediaService([ImagePicker? picker]) : _picker = picker ?? ImagePicker();
 
   Future<XFile?> pickWorkoutPhoto({
+    required BuildContext context,
     ImageSource source = ImageSource.gallery,
   }) async {
     final file = await _picker.pickImage(
@@ -18,7 +20,11 @@ class PostMediaService {
       maxHeight: 2400,
     );
     if (file == null) return null;
-    return cropPickedImage(file, shape: ImageCropShape.feedPhoto);
+    return cropPickedImage(
+      file,
+      shape: ImageCropShape.feedPhoto,
+      context: context,
+    );
   }
 
   Future<String> uploadWorkoutPhoto(XFile file) async {
@@ -52,9 +58,10 @@ class PostMediaService {
   /// Backwards-compatible convenience method for callers that want to pick
   /// and upload in one step.
   Future<String?> pickAndUploadWorkoutPhoto({
+    required BuildContext context,
     ImageSource source = ImageSource.gallery,
   }) async {
-    final file = await pickWorkoutPhoto(source: source);
+    final file = await pickWorkoutPhoto(context: context, source: source);
     if (file == null) return null;
     return uploadWorkoutPhoto(file);
   }

@@ -19,17 +19,18 @@ model Gym {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  roster           GymRoster[]
-  users            User[]
-  staff            GymStaff[]
-  workoutSessions  WorkoutSession[]
-  achievements     UserAchievement[]
-  posts            Post[]
-  workoutTemplates WorkoutTemplate[]
+  roster              GymRoster[]
+  users               User[]
+  staff               GymStaff[]
+  workoutSessions     WorkoutSession[]
+  achievements        UserAchievement[]
+  posts               Post[]
+  workoutTemplates    WorkoutTemplate[]
   coachCertifications CoachCertification[]
-  notices          GymNotice[]
-  buddyLinks       GymBuddyLink[]
-  appNotifications AppNotification[]
+  notices             GymNotice[]
+  buddyLinks          GymBuddyLink[]
+  appNotifications    AppNotification[]
+  personalRecords     PersonalRecord[]
 
   @@map("gyms")
 }
@@ -77,7 +78,7 @@ model User {
   phone            String?
   displayName      String?  @map("display_name")
   avatarPath       String?  @map("avatar_path")
-  gender           String?  // 'male' | 'female' | 'other' | null
+  gender           String? // 'male' | 'female' | 'other' | null
   bodyWeightKg     Decimal? @map("body_weight_kg") @db.Decimal(5, 2)
   heightCm         Decimal? @map("height_cm") @db.Decimal(5, 1)
   subscriptionTier String   @default("free") @map("subscription_tier")
@@ -85,27 +86,29 @@ model User {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  gym              Gym                    @relation(fields: [gymId], references: [id])
-  workoutSessions  WorkoutSession[]
-  customExercises  Exercise[]             @relation("CustomExercises")
-  userSessions     UserSession[]
-  pushTokens       PushToken[]
-  achievements     UserAchievement[]
-  posts            Post[]
-  postLikes        PostLike[]
-  postComments     PostComment[]
-  postFlags        PostFlag[]
-  savedExercises   SavedExercise[]
-  savedPrograms    SavedProgram[]
-  recentlyUsed     RecentlyUsedExercise[]
-  workoutTemplates WorkoutTemplate[]      @relation("TemplateCreator")
-  certificationsGiven CoachCertification[] @relation("CertificationCoach")
-  noticesAuthored     GymNotice[]          @relation("NoticeAuthor")
+  gym                   Gym                         @relation(fields: [gymId], references: [id])
+  workoutSessions       WorkoutSession[]
+  customExercises       Exercise[]                  @relation("CustomExercises")
+  userSessions          UserSession[]
+  pushTokens            PushToken[]
+  achievements          UserAchievement[]
+  posts                 Post[]
+  postLikes             PostLike[]
+  postComments          PostComment[]
+  postFlags             PostFlag[]
+  savedExercises        SavedExercise[]
+  savedPrograms         SavedProgram[]
+  recentlyUsed          RecentlyUsedExercise[]
+  workoutTemplates      WorkoutTemplate[]           @relation("TemplateCreator")
+  certificationsGiven   CoachCertification[]        @relation("CertificationCoach")
+  noticesAuthored       GymNotice[]                 @relation("NoticeAuthor")
   sessionParticipations WorkoutSessionParticipant[]
-  buddyLinksAsA       GymBuddyLink[]       @relation("BuddyUserA")
-  buddyLinksAsB       GymBuddyLink[]       @relation("BuddyUserB")
-  buddyRequestsSent   GymBuddyLink[]       @relation("BuddyRequester")
-  appNotifications    AppNotification[]
+  buddyLinksAsA         GymBuddyLink[]              @relation("BuddyUserA")
+  buddyLinksAsB         GymBuddyLink[]              @relation("BuddyUserB")
+  buddyRequestsSent     GymBuddyLink[]              @relation("BuddyRequester")
+  appNotifications      AppNotification[]
+  personalRecords       PersonalRecord[]            @relation("UserPersonalRecords")
+  verifiedRecords       PersonalRecord[]            @relation("CoachVerifiedRecords")
 
   @@map("users")
 }
@@ -139,30 +142,30 @@ model GymNotice {
 
 model Exercise {
   // ── Core identity ──────────────────────────────────────────────────────────
-  id              String   @id @default(uuid())
-  name            String
+  id   String @id @default(uuid())
+  name String
 
   // externalId: ExerciseDB's own ID (e.g. "01qpYSe"). Stored so the seeder
   // can upsert safely — if the seed runs twice, it matches on this field
   // instead of creating duplicates. Null for custom user-created exercises.
-  externalId      String?  @unique @map("external_id")
+  externalId String? @unique @map("external_id")
 
   // ── Classification ─────────────────────────────────────────────────────────
-  category        String?
-  bodyParts       String[] @map("body_parts")
-  targetMuscles   String[] @map("target_muscles")
+  category         String?
+  bodyParts        String[] @map("body_parts")
+  targetMuscles    String[] @map("target_muscles")
   secondaryMuscles String[] @map("secondary_muscles")
-  equipments      String[]
-  difficulty      String?
-  exerciseTypes   String[] @map("exercise_types")
+  equipments       String[]
+  difficulty       String?
+  exerciseTypes    String[] @map("exercise_types")
 
   // ── Media ──────────────────────────────────────────────────────────────────
-  gifUrl          String?  @map("gif_url")
-  imageUrls       Json?    @map("image_urls")
+  gifUrl    String? @map("gif_url")
+  imageUrls Json?   @map("image_urls")
 
   // ── Guidance ───────────────────────────────────────────────────────────────
-  overview        String?
-  instructions    String[]
+  overview     String?
+  instructions String[]
 
   // ── Authorship ─────────────────────────────────────────────────────────────
   isCustom        Boolean  @default(false) @map("is_custom")
@@ -183,22 +186,22 @@ model Exercise {
 }
 
 model WorkoutSession {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  gymId     String    @map("gym_id")
-  templateId String?  @map("template_id")
-  startedAt DateTime  @map("started_at")
-  endedAt   DateTime? @map("ended_at")
-  notes     String?
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  gymId      String    @map("gym_id")
+  templateId String?   @map("template_id")
+  startedAt  DateTime  @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+  notes      String?
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  user User         @relation(fields: [userId], references: [id])
-  gym  Gym          @relation(fields: [gymId], references: [id])
-  template WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  sets WorkoutSet[]
-  sharedPost Post?
+  user         User                        @relation(fields: [userId], references: [id])
+  gym          Gym                         @relation(fields: [gymId], references: [id])
+  template     WorkoutTemplate?            @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  sets         WorkoutSet[]
+  sharedPost   Post?
   participants WorkoutSessionParticipant[]
 
   @@index([userId])
@@ -305,28 +308,28 @@ model UserAchievement {
 // ============================================================
 
 model Post {
-  id              String   @id @default(uuid())
-  gymId           String   @map("gym_id")
-  userId          String   @map("user_id")
+  id               String   @id @default(uuid())
+  gymId            String   @map("gym_id")
+  userId           String   @map("user_id")
   workoutSessionId String?  @unique @map("workout_session_id")
-  content         String?
-  imageUrl        String?  @map("image_url")
-  imagePath       String?  @map("image_path")
-  achievementType String?  @map("achievement_type")
-  achievementId   String?  @map("achievement_id")
-  isFlagged       Boolean  @default(false) @map("is_flagged")
-  isDeleted       Boolean  @default(false) @map("is_deleted")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  content          String?
+  imageUrl         String?  @map("image_url")
+  imagePath        String?  @map("image_path")
+  achievementType  String?  @map("achievement_type")
+  achievementId    String?  @map("achievement_id")
+  isFlagged        Boolean  @default(false) @map("is_flagged")
+  isDeleted        Boolean  @default(false) @map("is_deleted")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  gym         Gym              @relation(fields: [gymId], references: [id])
-  user        User             @relation(fields: [userId], references: [id])
-  workoutSession WorkoutSession? @relation(fields: [workoutSessionId], references: [id])
-  achievement UserAchievement? @relation(fields: [achievementId], references: [id])
-  likes       PostLike[]
-  comments    PostComment[]
-  flags       PostFlag[]
-  certification CoachCertification?
+  gym            Gym                 @relation(fields: [gymId], references: [id])
+  user           User                @relation(fields: [userId], references: [id])
+  workoutSession WorkoutSession?     @relation(fields: [workoutSessionId], references: [id])
+  achievement    UserAchievement?    @relation(fields: [achievementId], references: [id])
+  likes          PostLike[]
+  comments       PostComment[]
+  flags          PostFlag[]
+  certification  CoachCertification?
 
   @@index([gymId])
   @@index([userId])
@@ -529,6 +532,42 @@ model AppNotification {
   @@index([userId, createdAt(sort: Desc)])
   @@index([gymId])
   @@map("app_notifications")
+}
+
+model PersonalRecord {
+  id           String   @id @default(uuid())
+  gymId        String   @map("gym_id")
+  userId       String   @map("user_id")
+  exerciseName String   @map("exercise_name")
+  weightKg     Decimal? @map("weight_kg") @db.Decimal(10, 2)
+  reps         Int
+  achievedDate DateTime @map("achieved_date") @db.Date
+
+  // Verification
+  status            String    @default("pending")
+  verifiedByCoachId String?   @map("verified_by_coach_id")
+  verifiedAt        DateTime? @map("verified_at")
+  rejectionReason   String?   @map("rejection_reason")
+
+  // Rate limiting
+  submissionCount  Int      @default(1) @map("submission_count")
+  lastSubmissionAt DateTime @default(now()) @map("last_submission_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  gym             Gym   @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user            User  @relation(name: "UserPersonalRecords", fields: [userId], references: [id], onDelete: Cascade)
+  verifiedByCoach User? @relation(name: "CoachVerifiedRecords", fields: [verifiedByCoachId], references: [id], onDelete: SetNull)
+
+  @@unique([gymId, userId, exerciseName])
+  @@index([gymId])
+  @@index([userId])
+  @@index([status])
+  @@index([exerciseName])
+  @@index([gymId, status, createdAt(sort: Desc)])
+  @@index([gymId, exerciseName, status, weightKg(sort: Desc), reps(sort: Desc)])
+  @@map("personal_records")
 }
 
 // Public "Propose your gym" applications from the marketing site.

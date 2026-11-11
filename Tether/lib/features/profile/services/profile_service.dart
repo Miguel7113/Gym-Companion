@@ -25,15 +25,18 @@ class ProfileService {
     required String displayName,
     double? bodyWeightKg,
     double? heightCm,
+    String? bio,
     String? avatarPath,
     bool includeAvatar = false,
+    bool includeBio = false,
   }) async {
     await _api.patch(
-      '/users/me/profile',
+      '/members/profile',
       data: {
         'displayName': displayName,
         'bodyWeightKg': bodyWeightKg,
         'heightCm': heightCm,
+        if (includeBio) 'bio': bio,
         if (includeAvatar) 'avatarPath': avatarPath,
       },
     );

@@ -69,6 +69,22 @@ Use the same Wi‑Fi. Emulator can keep `http://10.0.2.2:3001`.
 4. Ensure at least one member belongs to that gym
 5. Smoke: roster → notices → member share → feed moderation
 
+## Adding another gym
+
+From `gym-app-backend/` (uses the database and Supabase project in `.env`):
+
+```bash
+npm run gym:create -- --name "Test Gym B" --admin-email you+gymb@gmail.com \
+  --color '#FF7A00' --timezone Africa/Nairobi
+```
+
+This creates the gym and a portal admin. Without `--admin-password` a random
+password is printed once. The admin then signs in to the portal and uploads the
+roster; the gym appears in the app's gym picker straight away.
+
+Each email can belong to one gym only (staff emails are unique and every login
+is tied to one gym), so use different emails, or `+alias` addresses, per gym.
+
 ## Common failures
 
 | Symptom | Likely cause | Fix |

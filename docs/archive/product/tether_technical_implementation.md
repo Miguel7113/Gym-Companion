@@ -24,7 +24,7 @@ For the live schema and route list, prefer:
 └─────────────────┘
 ```
 
-RLS policies exist under `gym-app-backend/supabase/migrations/008_rls_policies.sql`. They are **not** a license to move business logic out of NestJS.
+RLS policies exist under `gym-app-backend/supabase/migrations/009_rls_policies.sql`. They are **not** a license to move business logic out of NestJS.
 
 ---
 
@@ -139,7 +139,7 @@ See `docs/archive/tether-plan/TETHER_Developer_Guide.md` for structure and token
 ## 8. RLS helpers (already in SQL)
 
 ```sql
--- From migration 008 (conceptual)
+-- From migration 009 (conceptual)
 public.get_my_gym_id()
 public.get_my_member_id()
 public.get_my_role()

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../../../core/navigation/main_navigation.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../social/services/social_extras_service.dart';
 import '../screens/notifications_screen.dart';
@@ -18,7 +19,9 @@ class ActivityBell extends ConsumerWidget {
       onPressed: () async {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+          MaterialPageRoute(
+            builder: (_) => const NotificationsScreen(),
+          ),
         );
         ref.invalidate(unreadNotificationCountProvider);
       },

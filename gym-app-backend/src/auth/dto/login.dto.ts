@@ -8,6 +8,7 @@ export class LoginDto {
   email!: string;
 
   @IsString()
-  @MinLength(8)
+  // Staff passwords can be 6+ characters (StaffInviteDto).
+  @MinLength(6)
   password!: string;
 }

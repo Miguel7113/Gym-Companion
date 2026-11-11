@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/glass_card.dart';
+
+import '../../../core/theme/tether_text.dart';
+import '../../../core/theme/tether_tokens.dart';
 import '../../../core/widgets/media_catalog.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/sync/sync_service.dart';
@@ -12,19 +13,8 @@ import '../models/workout_models.dart';
 import '../services/offline_workout_service.dart';
 import 'exercise_detail_screen.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ExercisePickerSheet
-//
-// A full-screen bottom sheet for picking exercises.
-// Features:
-//   - Search bar (debounced 350ms)
-//   - Body part filter chips (horizontal scroll)
-//   - Equipment filter (bottom sheet multi-select)
-//   - Recently Used row (when no filters active)
-//   - Saved/Favourites row (when no filters active)
-//   - Exercise list with quick-add (+) button
-//   - Tap exercise name → ExerciseDetailScreen with "Add to Workout" button
-// ─────────────────────────────────────────────────────────────────────────────
+/// Exercise Picker redesign with foundry-style bottom sheet
+/// Full-screen modal with dark header + cream content
 class ExercisePickerSheet extends ConsumerStatefulWidget {
   final void Function(Exercise) onExerciseSelected;
   final String? initialBodyPart;
@@ -39,7 +29,6 @@ class ExercisePickerSheet extends ConsumerStatefulWidget {
     this.initialEquipment,
   });
 
-  /// Shows as a full-screen modal bottom sheet.
   static Future<void> show(
     BuildContext context, {
     required void Function(Exercise) onExerciseSelected,
@@ -65,15 +54,14 @@ class ExercisePickerSheet extends ConsumerStatefulWidget {
       _ExercisePickerSheetState();
 }
 
-class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
+class _ExercisePickerSheetState
+    extends ConsumerState<ExercisePickerSheet> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
 
-  // Filters
   String? _selectedBodyPart;
   final Set<String> _selectedEquipment = {};
 
-  // Data
   List<Exercise> _exercises = [];
   List<Exercise> _recentlyUsed = [];
   List<Exercise> _saved = [];
@@ -95,7 +83,6 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
   void initState() {
     super.initState();
     _selectedBodyPart = widget.initialBodyPart;
-    // Pre-populate equipment filter if launched from the Train screen
     if (widget.initialEquipment != null) {
       _selectedEquipment.addAll(widget.initialEquipment!);
     }
@@ -114,12 +101,8 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     setState(() => _loadingMeta = true);
     final svc = ref.read(offlineWorkoutServiceProvider);
 
-    // If cache is empty, trigger a seed first and wait for it before
-    // trying to load body parts — otherwise everything returns [] silently.
-    final cacheCount = await ref
-        .read(appDatabaseProvider)
-        .exercisesDao
-        .getCacheCount();
+    final cacheCount =
+        await ref.read(appDatabaseProvider).exercisesDao.getCacheCount();
 
     if (cacheCount == 0) {
       debugPrint('[ExercisePicker] cache empty — seeding before loading meta');
@@ -127,41 +110,26 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     }
 
     await Future.wait([
-      svc
-          .listBodyParts()
-          .then((parts) {
-            if (mounted) setState(() => _bodyParts = parts);
-          })
-          .catchError((e) {
-            debugPrint('[ExercisePicker] listBodyParts failed: $e');
-          }),
-
-      svc
-          .listEquipments()
-          .then((equips) {
-            if (mounted) setState(() => _allEquipments = equips);
-          })
-          .catchError((e) {
-            debugPrint('[ExercisePicker] listEquipments failed: $e');
-          }),
-
-      svc
-          .getRecentlyUsed(limit: 8)
-          .then((recent) {
-            if (mounted) setState(() => _recentlyUsed = recent);
-          })
-          .catchError((e) {
-            debugPrint('[ExercisePicker] getRecentlyUsed failed: $e');
-          }),
-
-      svc
-          .getSavedExercises()
-          .then((saved) {
-            if (mounted) setState(() => _saved = saved);
-          })
-          .catchError((e) {
-            debugPrint('[ExercisePicker] getSavedExercises failed: $e');
-          }),
+      svc.listBodyParts().then((parts) {
+        if (mounted) setState(() => _bodyParts = parts);
+      }).catchError((e) {
+        debugPrint('[ExercisePicker] listBodyParts failed: $e');
+      }),
+      svc.listEquipments().then((equips) {
+        if (mounted) setState(() => _allEquipments = equips);
+      }).catchError((e) {
+        debugPrint('[ExercisePicker] listEquipments failed: $e');
+      }),
+      svc.getRecentlyUsed(limit: 8).then((recent) {
+        if (mounted) setState(() => _recentlyUsed = recent);
+      }).catchError((e) {
+        debugPrint('[ExercisePicker] getRecentlyUsed failed: $e');
+      }),
+      svc.getSavedExercises().then((saved) {
+        if (mounted) setState(() => _saved = saved);
+      }).catchError((e) {
+        debugPrint('[ExercisePicker] getSavedExercises failed: $e');
+      }),
     ]);
 
     if (mounted) setState(() => _loadingMeta = false);
@@ -172,9 +140,8 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     final svc = ref.read(offlineWorkoutServiceProvider);
     try {
       final query = _searchCtrl.text.trim();
-      final equipment = _selectedEquipment.isNotEmpty
-          ? _selectedEquipment.toList()
-          : null;
+      final equipment =
+          _selectedEquipment.isNotEmpty ? _selectedEquipment.toList() : null;
 
       final results = await svc.listExercises(
         query: query.isEmpty ? null : query,
@@ -202,14 +169,13 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
   void _selectBodyPart(String? part) {
     setState(() {
       _selectedBodyPart = part;
-      _exercises = []; // clear while loading
+      _exercises = [];
     });
     if (part != null) {
-      _fetchExercises(); // drill into this body part
+      _fetchExercises();
     }
   }
 
-  // True when user has drilled into a body part, searched, or filtered equipment
   bool get _isDrilling =>
       _selectedBodyPart != null ||
       _selectedEquipment.isNotEmpty ||
@@ -245,13 +211,11 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
         allEquipments: _allEquipments,
         selected: selected,
         onApply: (newSelection) {
-          // Apply state first, then fetch with updated filters
           setState(() {
             _selectedEquipment
               ..clear()
               ..addAll(newSelection);
           });
-          // Schedule fetch after setState completes
           WidgetsBinding.instance.addPostFrameCallback(
             (_) => _fetchExercises(),
           );
@@ -268,168 +232,193 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     return Container(
       height: h - topPad - 24,
       decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXxl)),
+        color: TetherTokens.ink,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
-          // ── Drag handle ──────────────────────────────────────────────
+          // Drag handle
           Center(
             child: Container(
               margin: const EdgeInsets.only(top: 10, bottom: 6),
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: TetherTokens.cream.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
 
-          // ── Header ───────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-            child: Row(
-              children: [
-                // Back button when drilling into a body part
-                if (_isDrilling)
-                  GestureDetector(
-                    onTap: () => _selectBodyPart(null),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      margin: const EdgeInsets.only(right: 10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceContainerHigh,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                        ),
-                      ),
-                      child: const Icon(Symbols.arrow_back, size: 16),
-                    ),
-                  ),
-                Expanded(
-                  child: Text(
-                    _selectedBodyPart != null
-                        ? _titleCase(_selectedBodyPart!)
-                        : widget.initialCategory != null
-                        ? _titleCase(widget.initialCategory!)
-                        : 'Add exercise',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceContainerHigh,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    child: const Icon(Symbols.close, size: 16),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // DARK HEADER
+          _buildHeader(context),
 
-          // ── Search + Equipment filter button ─────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
-                    ),
-                    child: TextField(
-                      controller: _searchCtrl,
-                      onChanged: _onSearchChanged,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      decoration: InputDecoration(
-                        hintText: _selectedBodyPart != null
-                            ? 'Search ${_selectedBodyPart}...'
-                            : 'Search all exercises...',
-                        hintStyle: Theme.of(context).textTheme.bodyMedium
-                            ?.copyWith(color: AppTheme.onSurfaceVariant),
-                        prefixIcon: const Icon(
-                          Symbols.search,
-                          size: 18,
-                          color: AppTheme.onSurfaceVariant,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                        ),
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _showEquipmentFilter,
-                  child: Container(
-                    height: 44,
-                    width: 44,
-                    decoration: BoxDecoration(
-                      color: _selectedEquipment.isNotEmpty
-                          ? AppTheme.primaryContainer.withOpacity(0.12)
-                          : AppTheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-                      border: Border.all(
-                        color: _selectedEquipment.isNotEmpty
-                            ? AppTheme.primaryContainer.withOpacity(0.4)
-                            : Colors.white.withOpacity(0.08),
-                      ),
-                    ),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(
-                          Symbols.tune,
-                          size: 18,
-                          color: _selectedEquipment.isNotEmpty
-                              ? AppTheme.primaryContainer
-                              : AppTheme.onSurfaceVariant,
-                        ),
-                        if (_selectedEquipment.isNotEmpty)
-                          Positioned(
-                            top: 7,
-                            right: 7,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: AppTheme.primaryContainer,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          Divider(height: 1, color: Colors.white.withOpacity(0.06)),
-
-          // ── Content — body part grid OR exercise list ────────────────
+          // CREAM CONTENT
           Expanded(
-            child: _isDrilling || _bodyParts.isEmpty
-                ? _buildExerciseList()
-                : _buildBodyPartGrid(),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: TetherTokens.cream,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _buildSearchAndFilter(),
+                  Expanded(
+                    child: _isDrilling || _bodyParts.isEmpty
+                        ? _buildExerciseList()
+                        : _buildBodyPartGrid(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+      child: Row(
+        children: [
+          if (_isDrilling)
+            GestureDetector(
+              onTap: () => _selectBodyPart(null),
+              child: Container(
+                width: 36,
+                height: 36,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  color: TetherTokens.nightCard,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Symbols.arrow_back,
+                  color: TetherTokens.cream,
+                  size: 18,
+                ),
+              ),
+            ),
+          Expanded(
+            child: Text(
+              (_selectedBodyPart != null
+                      ? _titleCase(_selectedBodyPart!)
+                      : widget.initialCategory != null
+                          ? _titleCase(widget.initialCategory!)
+                          : 'ADD EXERCISE')
+                  .toUpperCase(),
+              style: TetherText.sans(18, w: TetherTokens.w800)
+                  .copyWith(color: TetherTokens.cream),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: TetherTokens.nightCard,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Symbols.close,
+                color: TetherTokens.cream,
+                size: 18,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndFilter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: TetherTokens.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: TetherTokens.dayBorder.withValues(alpha: 0.3),
+                ),
+              ),
+              child: TextField(
+                controller: _searchCtrl,
+                onChanged: _onSearchChanged,
+                style: TetherText.sans(14, w: TetherTokens.w400)
+                    .copyWith(color: TetherTokens.ink),
+                decoration: InputDecoration(
+                  hintText: _selectedBodyPart != null
+                      ? 'Search $_selectedBodyPart...'
+                      : 'Search exercises...',
+                  hintStyle: TetherText.sans(14, w: TetherTokens.w400)
+                      .copyWith(color: TetherTokens.nightMuted),
+                  prefixIcon: const Icon(
+                    Symbols.search,
+                    size: 20,
+                    color: TetherTokens.nightMuted,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _showEquipmentFilter,
+            child: Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: _selectedEquipment.isNotEmpty
+                    ? TetherTokens.defaultAccent.withValues(alpha: 0.15)
+                    : TetherTokens.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _selectedEquipment.isNotEmpty
+                      ? TetherTokens.defaultAccent
+                      : TetherTokens.dayBorder.withValues(alpha: 0.3),
+                  width: _selectedEquipment.isNotEmpty ? 2 : 1,
+                ),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    Symbols.tune,
+                    size: 20,
+                    color: _selectedEquipment.isNotEmpty
+                        ? TetherTokens.defaultAccent
+                        : TetherTokens.nightMuted,
+                  ),
+                  if (_selectedEquipment.isNotEmpty)
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: TetherTokens.defaultAccent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -438,20 +427,9 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
 
   Widget _buildBodyPartGrid() {
     if (_loadingMeta) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation(AppTheme.primaryContainer),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Loading exercises...',
-              style: TextStyle(color: AppTheme.onSurfaceVariant, fontSize: 12),
-            ),
-          ],
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFFFF5A1F),
         ),
       );
     }
@@ -464,40 +442,42 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
         childAspectRatio: 2.2,
       ),
       itemCount: _bodyParts.length,
-      itemBuilder: (_, i) {
+      itemBuilder: (context, i) {
         final part = _bodyParts[i];
         return GestureDetector(
           onTap: () => _selectBodyPart(part),
           child: Container(
             decoration: BoxDecoration(
-              color: AppTheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              color: TetherTokens.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: TetherTokens.dayBorder.withValues(alpha: 0.3),
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: Image.asset(
                     AppMedia.bodyPart(part),
-                    width: 42,
-                    height: 42,
+                    width: 40,
+                    height: 40,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 42,
-                      height: 42,
-                      color: AppTheme.surfaceContainerHigh,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 40,
+                      height: 40,
+                      color: TetherTokens.sand,
                       alignment: Alignment.center,
                       child: const Icon(
                         Symbols.fitness_center,
-                        size: 16,
-                        color: AppTheme.primaryContainer,
+                        size: 18,
+                        color: TetherTokens.defaultAccent,
                       ),
                     ),
                   ),
@@ -506,17 +486,16 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
                 Expanded(
                   child: Text(
                     _titleCase(part),
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: AppTheme.onSurface,
-                    ),
+                    style: TetherText.sans(13, w: TetherTokens.w600)
+                        .copyWith(color: TetherTokens.ink),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const Icon(
                   Symbols.chevron_right,
-                  size: 14,
-                  color: AppTheme.onSurfaceVariant,
+                  size: 16,
+                  color: TetherTokens.nightMuted,
                 ),
               ],
             ),
@@ -530,8 +509,7 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     if (_loadingExercises) {
       return const Center(
         child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation(AppTheme.primaryContainer),
+          color: Color(0xFFFF5A1F),
         ),
       );
     }
@@ -540,15 +518,15 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     if (items.isEmpty) {
       return _buildLibraryUnavailable(
         message: _searchCtrl.text.isNotEmpty
-            ? 'No matching exercises'
-            : 'Exercise library not downloaded',
+            ? 'NO MATCHING EXERCISES'
+            : 'LIBRARY NOT DOWNLOADED',
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       itemCount: items.length,
-      itemBuilder: (_, i) {
+      itemBuilder: (context, i) {
         final item = items[i];
         if (item is _SectionHeader) {
           return _SectionHeaderTile(label: item.label);
@@ -564,7 +542,7 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
   }
 
   Widget _buildLibraryUnavailable({
-    String message = 'Exercise library not downloaded',
+    String message = 'LIBRARY NOT DOWNLOADED',
   }) {
     return Center(
       child: Padding(
@@ -572,33 +550,65 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Symbols.download_for_offline,
-              size: 44,
-              color: AppTheme.onSurfaceVariant.withOpacity(0.7),
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: TetherTokens.sand,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Symbols.download_for_offline,
+                size: 40,
+                color: TetherTokens.nightMuted,
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 20),
             Text(
               message,
-              style: Theme.of(context).textTheme.titleMedium,
+              style: TetherText.sans(16, w: TetherTokens.w800)
+                  .copyWith(color: TetherTokens.ink),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Connect once to download the exercise library for offline use.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppTheme.onSurfaceVariant),
+              'Connect once to download the\nexercise library for offline use',
+              style: TetherText.sans(13, w: TetherTokens.w400)
+                  .copyWith(color: TetherTokens.nightMuted),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: () {
+            const SizedBox(height: 24),
+            GestureDetector(
+              onTap: () {
                 _loadMeta();
                 _fetchExercises();
               },
-              icon: const Icon(Symbols.refresh, size: 18),
-              label: const Text('Try again'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: TetherTokens.defaultAccent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Symbols.refresh,
+                      color: TetherTokens.ink,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'TRY AGAIN',
+                      style: TetherText.sans(13, w: TetherTokens.w800)
+                          .copyWith(color: TetherTokens.ink),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -606,14 +616,11 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
     );
   }
 
-  // Builds the flat list including section headers
   List<dynamic> get _listItems {
     final items = <dynamic>[];
     final hasActiveFilter =
         _selectedEquipment.isNotEmpty || _searchCtrl.text.isNotEmpty;
 
-    // Show recently used / saved sections when drilling into a body part
-    // but no additional filters are active
     if (_selectedBodyPart != null && !hasActiveFilter) {
       if (_recentlyUsed.isNotEmpty) {
         final relevant = _recentlyUsed
@@ -621,7 +628,7 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
             .take(3)
             .toList();
         if (relevant.isNotEmpty) {
-          items.add(const _SectionHeader('Recently used'));
+          items.add(const _SectionHeader('RECENTLY USED'));
           items.addAll(relevant);
         }
       }
@@ -631,25 +638,24 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
             .take(3)
             .toList();
         if (relevant.isNotEmpty) {
-          items.add(const _SectionHeader('Saved'));
+          items.add(const _SectionHeader('SAVED'));
           items.addAll(relevant);
         }
       }
       if (items.isNotEmpty) {
-        items.add(const _SectionHeader('All'));
+        items.add(const _SectionHeader('ALL EXERCISES'));
       }
     }
 
-    // When searching across all body parts (no body part selected)
     if (_selectedBodyPart == null &&
         _searchCtrl.text.isEmpty &&
         _selectedEquipment.isEmpty) {
       if (_recentlyUsed.isNotEmpty) {
-        items.add(const _SectionHeader('Recently used'));
+        items.add(const _SectionHeader('RECENTLY USED'));
         items.addAll(_recentlyUsed.take(5));
       }
       if (_saved.isNotEmpty) {
-        items.add(const _SectionHeader('Saved'));
+        items.add(const _SectionHeader('SAVED'));
         items.addAll(_saved.take(5));
       }
     }
@@ -659,8 +665,7 @@ class _ExercisePickerSheetState extends ConsumerState<ExercisePickerSheet> {
   }
 }
 
-// ─── List tile ────────────────────────────────────────────────────────────────
-
+// List tile
 class _ExerciseListTile extends StatelessWidget {
   final Exercise exercise;
   final VoidCallback onTap;
@@ -674,38 +679,45 @@ class _ExerciseListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: TetherTokens.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: TetherTokens.dayBorder.withValues(alpha: 0.3),
+          ),
+        ),
         child: Row(
           children: [
-            // GIF thumbnail or placeholder
+            // GIF thumbnail
             Container(
-              width: 44,
-              height: 44,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                border: Border.all(color: Colors.white.withOpacity(0.07)),
+                color: TetherTokens.sand,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: exercise.gifUrl != null
                   ? ClipRRect(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                      borderRadius: BorderRadius.circular(12),
                       child: Image.network(
                         exercise.gifUrl!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(
+                        errorBuilder: (context, error, stackTrace) => const Icon(
                           Symbols.fitness_center,
-                          size: 20,
-                          color: AppTheme.onSurfaceVariant,
+                          size: 22,
+                          color: TetherTokens.nightMuted,
                         ),
                       ),
                     )
                   : const Icon(
                       Symbols.fitness_center,
-                      size: 20,
-                      color: AppTheme.onSurfaceVariant,
+                      size: 22,
+                      color: TetherTokens.nightMuted,
                     ),
             ),
             const SizedBox(width: 12),
@@ -716,22 +728,20 @@ class _ExerciseListTile extends StatelessWidget {
                 children: [
                   Text(
                     exercise.name,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TetherText.sans(14, w: TetherTokens.w600)
+                        .copyWith(color: TetherTokens.ink),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (exercise.category != null)
+                  if (exercise.category != null || exercise.bodyParts.isNotEmpty)
                     Text(
                       [
-                        exercise.category!,
+                        if (exercise.category != null) exercise.category!,
                         if (exercise.bodyParts.isNotEmpty)
                           exercise.bodyParts.first,
                       ].join(' · '),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppTheme.onSurfaceVariant,
-                      ),
+                      style: TetherText.sans(12, w: TetherTokens.w400)
+                          .copyWith(color: TetherTokens.nightMuted),
                     ),
                 ],
               ),
@@ -740,19 +750,20 @@ class _ExerciseListTile extends StatelessWidget {
             GestureDetector(
               onTap: onAdd,
               child: Container(
-                width: 32,
-                height: 32,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryContainer.withOpacity(0.12),
+                  color: TetherTokens.defaultAccent.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: AppTheme.primaryContainer.withOpacity(0.35),
+                    color: TetherTokens.defaultAccent.withValues(alpha: 0.4),
+                    width: 2,
                   ),
                 ),
                 child: const Icon(
                   Symbols.add,
-                  size: 16,
-                  color: AppTheme.primaryContainer,
+                  size: 18,
+                  color: TetherTokens.defaultAccent,
                 ),
               ),
             ),
@@ -775,20 +786,17 @@ class _SectionHeaderTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
       child: Text(
         label,
-        style: Theme.of(
-          context,
-        ).textTheme.labelLarge?.copyWith(color: AppTheme.onSurfaceVariant),
+        style: TetherText.sans(12, w: TetherTokens.w800)
+            .copyWith(color: TetherTokens.nightMuted),
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Equipment Filter Bottom Sheet
-// ─────────────────────────────────────────────────────────────────────────────
 class _EquipmentFilterSheet extends StatefulWidget {
   final List<String> allEquipments;
   final Set<String> selected;
@@ -819,8 +827,8 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: AppTheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXxl)),
+        color: TetherTokens.cream,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 16),
       child: Column(
@@ -831,31 +839,31 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
             child: Container(
               width: 36,
               height: 4,
-              margin: const EdgeInsets.only(bottom: 12),
+              margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: TetherTokens.nightMuted.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Filter by equipment',
-                    style: Theme.of(context).textTheme.labelLarge,
+                    'FILTER BY EQUIPMENT',
+                    style: TetherText.sans(16, w: TetherTokens.w800)
+                        .copyWith(color: TetherTokens.ink),
                   ),
                 ),
                 if (_local.isNotEmpty)
                   GestureDetector(
                     onTap: () => setState(() => _local.clear()),
                     child: Text(
-                      'Clear',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppTheme.primaryContainer,
-                      ),
+                      'CLEAR',
+                      style: TetherText.sans(12, w: TetherTokens.w800)
+                          .copyWith(color: TetherTokens.defaultAccent),
                     ),
                   ),
               ],
@@ -867,41 +875,89 @@ class _EquipmentFilterSheetState extends State<_EquipmentFilterSheet> {
             ),
             child: ListView.builder(
               shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: widget.allEquipments.length,
-              itemBuilder: (_, i) {
+              itemBuilder: (context, i) {
                 final eq = widget.allEquipments[i];
                 final checked = _local.contains(eq);
-                return CheckboxListTile(
-                  value: checked,
-                  onChanged: (v) {
+                return GestureDetector(
+                  onTap: () {
                     setState(() {
-                      if (v == true)
-                        _local.add(eq);
-                      else
+                      if (checked) {
                         _local.remove(eq);
+                      } else {
+                        _local.add(eq);
+                      }
                     });
                   },
-                  title: Text(
-                    eq,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: checked
+                          ? TetherTokens.defaultAccent.withValues(alpha: 0.1)
+                          : TetherTokens.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: checked
+                            ? TetherTokens.defaultAccent
+                            : TetherTokens.dayBorder.withValues(alpha: 0.3),
+                        width: checked ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          checked ? Symbols.check_circle : Symbols.circle,
+                          size: 20,
+                          color: checked
+                              ? TetherTokens.defaultAccent
+                              : TetherTokens.nightMuted,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            eq,
+                            style: TetherText.sans(14, w: TetherTokens.w600)
+                                .copyWith(
+                              color: checked
+                                  ? TetherTokens.defaultAccent
+                                  : TetherTokens.ink,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  activeColor: AppTheme.primaryContainer,
-                  checkColor: AppTheme.onPrimaryFixed,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  dense: true,
                 );
               },
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: PrimaryButton(
-              label: _local.isEmpty ? 'Show All' : 'Apply (${_local.length})',
-              onPressed: () {
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: GestureDetector(
+              onTap: () {
                 widget.onApply(Set<String>.from(_local));
                 Navigator.pop(context);
               },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: TetherTokens.defaultAccent,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  _local.isEmpty ? 'SHOW ALL' : 'APPLY (${_local.length})',
+                  textAlign: TextAlign.center,
+                  style: TetherText.sans(14, w: TetherTokens.w800)
+                      .copyWith(color: TetherTokens.ink),
+                ),
+              ),
             ),
           ),
         ],

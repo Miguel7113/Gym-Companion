@@ -1,55 +1,43 @@
 import 'dart:async';
-import 'dart:io';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/tether_palette.dart';
+import '../../../core/theme/tether_text.dart';
+import '../../../core/theme/tether_tokens.dart';
 import '../../../core/widgets/app_dialog.dart';
-import '../../../core/widgets/glass_card.dart';
-import '../../../core/providers/api_provider.dart';
-import '../../../core/sync/connectivity_provider.dart';
-import '../../../core/sync/sync_service.dart';
+import '../../../core/navigation/main_navigation.dart';
 import '../models/workout_models.dart';
 import '../services/offline_workout_service.dart';
 import '../services/workout_service.dart';
-import '../../social/providers/feed_provider.dart';
-import '../../social/services/pending_workout_share_queue.dart';
-import '../../social/services/post_media_service.dart';
-import '../../social/services/social_service.dart';
+import '../widgets/hevy_exercise_card.dart'; // For DraftSetEntry
 import '../../home/providers/home_data_provider.dart';
 import 'exercise_picker_sheet.dart';
-import '../widgets/exercise_info_sheet.dart';
-import '../widgets/hevy_exercise_card.dart';
-import '../widgets/workout_stats_bar.dart';
+import 'exercise_picker_sheet.dart';
+import 'workout_session_screen.dart'; // For WorkoutCompleteScreen
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WorkoutSessionScreen
-//
-// Two modes:
-//   session == null  → "Name your workout" dialog, then creates a new session
-//   session != null  → Active logging view with elapsed timer, set tables,
-//                      rest timer, and PR badges
-//
-// builderExercises: optional list from WorkoutBuilderScreen — pre-populates
-// the set tables with the exercises the user planned (but sets are empty
-// until actually logged).
-// ─────────────────────────────────────────────────────────────────────────────
+/// Phase 2: Redesigned workout session screen with full state management
+/// Matches Tether redesign reference with integrated functionality
 class WorkoutSessionScreen extends ConsumerStatefulWidget {
   final WorkoutSession? session;
   final List<BuilderExerciseEntry>? builderExercises;
 
-  const WorkoutSessionScreen({super.key, this.session, this.builderExercises});
+  const WorkoutSessionScreen({
+    super.key,
+    this.session,
+    this.builderExercises,
+  });
 
   @override
   ConsumerState<WorkoutSessionScreen> createState() =>
       _WorkoutSessionScreenState();
 }
 
-class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
+class _WorkoutSessionScreenState
+    extends ConsumerState<WorkoutSessionScreen>
     with TickerProviderStateMixin {
   // ── Session state ──────────────────────────────────────────────────────────
   WorkoutSession? _session;
@@ -57,12 +45,9 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
   bool _isEnding = false;
   String? _error;
 
-  // ── Sets (local mirror — avoids re-fetching after each add) ───────────────
-  // Map: exerciseId → list of sets in insertion order
+  // ── Sets (local mirror) ────────────────────────────────────────────────────
   final Map<String, List<_LocalSet>> _setsByExercise = {};
-  // Ordered exercise IDs so the UI renders in the order exercises were added
   final List<String> _exerciseOrder = [];
-  // Exercise lookup map so we can display names without a full re-fetch
   final Map<String, Exercise> _exerciseMap = {};
   final Map<String, List<DraftSetEntry>> _draftSetsByExercise = {};
   final Map<String, ProgressData?> _previousByExercise = {};
@@ -71,19 +56,19 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
   int _prCount = 0;
   String? _lastPrExerciseName;
   String? _lastPrValue;
-  String? _lastPrImageUrl;
 
   // ── Elapsed timer ──────────────────────────────────────────────────────────
   Timer? _elapsedTimer;
   Duration _elapsed = Duration.zero;
 
   // ── Rest timer ─────────────────────────────────────────────────────────────
-  int _restDurationSecs = 90; // per-session setting, adjustable
+  int _restDurationSecs = 90;
   Timer? _restTimer;
   int _restRemaining = 0;
   bool _restActive = false;
 
-  // ── Animations ─────────────────────────────────────────────────────────────
+  // ── UI state ───────────────────────────────────────────────────────────────
+  final Set<String> _expandedExercises = {}; // Track by exerciseId
   late final AnimationController _prBannerCtrl;
 
   @override
@@ -98,7 +83,8 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
     if (_session != null) {
       _startElapsedTimer();
       _buildLocalSetsFromSession(_session!);
-      // Pre-populate from builder exercises (they start with empty set rows)
+      
+      // Pre-populate from builder exercises
       if (widget.builderExercises != null) {
         for (final entry in widget.builderExercises!) {
           final id = entry.exercise.id;
@@ -106,6 +92,7 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
             _setsByExercise[id] = [];
             _exerciseOrder.add(id);
             _exerciseMap[id] = entry.exercise;
+            _expandedExercises.add(id); // Auto-expand planned exercises
           }
           _draftSetsByExercise[id] = entry.sets.isEmpty
               ? [DraftSetEntry.empty()]
@@ -125,8 +112,12 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
         }
       }
       _ensureDraftRowsForExercises();
+      // Auto-expand first exercise if none are expanded
+      if (_expandedExercises.isEmpty && _exerciseOrder.isNotEmpty) {
+        _expandedExercises.add(_exerciseOrder.first);
+      }
     } else {
-      // Show the "name your workout" dialog after first frame
+      // Show name dialog after first frame
       WidgetsBinding.instance.addPostFrameCallback((_) => _showNameDialog());
     }
   }
@@ -168,27 +159,18 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
     }
   }
 
-  /// Persists draft rows that already have weight + reps so Finish cannot
-  /// create hollow sessions when the user skipped the checkmark.
-  Future<void> _flushFilledDrafts() async {
-    final pending = <({String exerciseId, DraftSetEntry draft})>[];
-    for (final exerciseId in List<String>.from(_exerciseOrder)) {
-      final drafts =
-          List<DraftSetEntry>.from(_draftSetsByExercise[exerciseId] ?? const []);
-      for (final draft in drafts) {
-        if (draft.weightKg > 0 && draft.reps > 0) {
-          pending.add((exerciseId: exerciseId, draft: draft));
-        }
+  Future<void> _loadPreviousForExercise(String exerciseId) async {
+    try {
+      final history =
+          await ref.read(workoutServiceProvider).getProgress(exerciseId);
+      if (mounted) {
+        setState(() {
+          _previousByExercise[exerciseId] =
+              history.isNotEmpty ? history.last : null;
+        });
       }
-    }
-    for (final item in pending) {
-      await _completeDraftSet(
-        item.exerciseId,
-        item.draft,
-        item.draft.weightKg,
-        item.draft.reps,
-        item.draft.rpe,
-      );
+    } catch (_) {
+      if (mounted) setState(() => _previousByExercise[exerciseId] = null);
     }
   }
 
@@ -263,12 +245,13 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
   }
 
   Future<void> _endSession() async {
-    if (_session == null) return;
+    if (_session == null || _isEnding) return;
+    
+    // Show confirmation dialog
     final confirmed = await _showEndConfirm();
     if (!confirmed || !mounted) return;
 
-    // Stop live timers while we flush drafts + persist. Keep the session
-    // editable (not read-only) until drafts are saved so cards don't go hollow.
+    // Stop timers and flush any filled drafts
     _elapsedTimer?.cancel();
     _restTimer?.cancel();
     setState(() {
@@ -295,7 +278,8 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
           sets: _session!.sets,
         );
       });
-      // Drop Home "in progress" card before navigation.
+      
+      // Invalidate home data to remove "in progress" card
       ref.invalidate(homeDataProvider);
 
       final svc = ref.read(offlineWorkoutServiceProvider);
@@ -303,10 +287,13 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
         _session!.id,
         notes: _session!.notes,
       );
+      
       if (endedSession.endedAt != null) {
         _elapsed = endedSession.endedAt!.difference(endedSession.startedAt);
       }
+      
       ref.invalidate(homeDataProvider);
+      
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -314,15 +301,10 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
             builder: (_) => WorkoutCompleteScreen(
               sessionId: endedSession.id,
               duration: _elapsed,
-              totalSets: _setsByExercise.values.fold(
-                0,
-                (sum, sets) => sum + sets.length,
-              ),
+              totalSets: _totalSets,
               exerciseCount: _exerciseOrder.length,
               prCount: _prCount,
-              totalVolume: _setsByExercise.values
-                  .expand((sets) => sets)
-                  .fold<double>(0, (sum, set) => sum + set.weightKg * set.reps),
+              totalVolume: _totalVolumeKg,
               workoutName: _session!.notes,
               initialCaption: _exerciseNotesSummary(),
             ),
@@ -348,6 +330,28 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
       });
       ref.invalidate(homeDataProvider);
       _startElapsedTimer();
+    }
+  }
+
+  Future<void> _flushFilledDrafts() async {
+    final pending = <({String exerciseId, DraftSetEntry draft})>[];
+    for (final exerciseId in List<String>.from(_exerciseOrder)) {
+      final drafts =
+          List<DraftSetEntry>.from(_draftSetsByExercise[exerciseId] ?? const []);
+      for (final draft in drafts) {
+        if (draft.weightKg > 0 && draft.reps > 0) {
+          pending.add((exerciseId: exerciseId, draft: draft));
+        }
+      }
+    }
+    for (final item in pending) {
+      await _completeDraftSet(
+        item.exerciseId,
+        item.draft,
+        item.draft.weightKg,
+        item.draft.reps,
+        item.draft.rpe,
+      );
     }
   }
 
@@ -380,36 +384,17 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
 
   // ─── Exercise management ─────────────────────────────────────────────────────
 
-  Future<void> _loadPreviousForExercise(String exerciseId) async {
-    try {
-      final history =
-          await ref.read(workoutServiceProvider).getProgress(exerciseId);
-      if (mounted) {
-        setState(() {
-          _previousByExercise[exerciseId] =
-              history.isNotEmpty ? history.last : null;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _previousByExercise[exerciseId] = null);
-    }
-  }
-
-  Future<void> _openExerciseInfo(String exerciseId) async {
-    final exercise = _exerciseMap[exerciseId];
-    if (exercise == null) return;
-    await ExerciseInfoSheet.show(
-      context,
-      exercise: exercise,
-      routineId: _session?.templateId,
-    );
-  }
-
   Future<void> _pickExercise() async {
-    await ExercisePickerSheet.show(
-      context,
-      onExerciseSelected: _addExercise,
-    );
+      await ExercisePickerSheet.show(
+        context,
+        onExerciseSelected: _addExercise,
+      );
+    } else {
+      await ExercisePickerSheet.show(
+        context,
+        onExerciseSelected: _addExercise,
+      );
+    }
   }
 
   void _addExercise(Exercise ex) {
@@ -419,18 +404,9 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
         _exerciseMap[ex.id] = ex;
         _setsByExercise[ex.id] = [];
         _draftSetsByExercise[ex.id] = [DraftSetEntry.empty()];
+        _expandedExercises.add(ex.id); // Auto-expand new exercise
         _loadPreviousForExercise(ex.id);
       }
-    });
-  }
-
-  void _addDraftSet(String exerciseId) {
-    setState(() {
-      final drafts = _draftSetsByExercise.putIfAbsent(
-        exerciseId,
-        () => <DraftSetEntry>[],
-      );
-      drafts.add(DraftSetEntry.empty());
     });
   }
 
@@ -463,10 +439,10 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
           _setsByExercise[exerciseId]?.removeWhere(deleted.contains);
           _prCount -= deleted.where((s) => s.isPr).length;
         });
-        showAppSnack(
-          context,
-          "Couldn't remove all sets. Check your connection and try again.",
-          tone: AppSnackTone.error,
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't remove all sets. Check your connection and try again."),
+          ),
         );
         return;
       }
@@ -481,6 +457,35 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
       _notesByExercise.remove(exerciseId);
       _setsByExercise.remove(exerciseId);
       _exerciseMap.remove(exerciseId);
+      _expandedExercises.remove(exerciseId);
+    });
+  }
+
+  void _showExerciseMenu(String exerciseId) {
+    showAppActionSheet(
+      context,
+      title: _exerciseMap[exerciseId]?.name ?? 'Exercise',
+      actions: [
+        AppSheetAction(
+          icon: Symbols.delete,
+          label: 'Remove exercise',
+          value: 'remove',
+        ),
+      ],
+    ).then((action) {
+      if (action == 'remove') {
+        _removeExercise(exerciseId);
+      }
+    });
+  }
+
+  void _addDraftSet(String exerciseId) {
+    setState(() {
+      final drafts = _draftSetsByExercise.putIfAbsent(
+        exerciseId,
+        () => <DraftSetEntry>[],
+      );
+      drafts.add(DraftSetEntry.empty());
     });
   }
 
@@ -535,8 +540,6 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
         _prCount++;
         _lastPrExerciseName = ex.name;
         _lastPrValue = '${weight}kg × $reps reps';
-        final bodyPart = ex.bodyParts.isNotEmpty ? ex.bodyParts.first : null;
-        _lastPrImageUrl = _prImageForBodyPart(bodyPart);
         _prBannerCtrl.forward(from: 0);
         HapticFeedback.mediumImpact();
       } else {
@@ -547,7 +550,20 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
       setState(() {
         final drafts = _draftSetsByExercise[exerciseId];
         drafts?.remove(draft);
-        if (drafts != null && drafts.isEmpty) drafts.add(DraftSetEntry.empty());
+        
+        // If no drafts left, create new draft with same weight/reps
+        if (drafts != null && drafts.isEmpty) {
+          drafts.add(DraftSetEntry(
+            localId: '${exerciseId}_${DateTime.now().millisecondsSinceEpoch}',
+            weightKg: weight,
+            reps: reps,
+          ));
+        } else if (drafts != null && drafts.isNotEmpty) {
+          // Duplicate weight/reps to next draft set
+          final nextDraft = drafts.first;
+          nextDraft.weightKg = weight;
+          nextDraft.reps = reps;
+        }
       });
 
       if (_restEnabledByExercise[exerciseId] == true) {
@@ -560,45 +576,6 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
           const SnackBar(content: Text("Couldn't save set")),
         );
       }
-    }
-  }
-
-  /// Un-ticks a logged set: it goes back to an editable row with the same
-  /// values. The exercise always stays in the workout.
-  Future<void> _uncompleteSet(String exerciseId, String setId) async {
-    final sets = _setsByExercise[exerciseId];
-    final index = sets?.indexWhere((s) => s.id == setId) ?? -1;
-    if (sets == null || index < 0) return;
-    final removed = sets[index];
-    final restored = DraftSetEntry(
-      localId: 'undo_${removed.id}',
-      weightKg: removed.weightKg,
-      reps: removed.reps,
-      rpe: removed.rpe,
-    );
-
-    setState(() {
-      sets.removeAt(index);
-      if (removed.isPr && _prCount > 0) _prCount--;
-      _draftSetsByExercise.putIfAbsent(exerciseId, () => []).insert(0, restored);
-    });
-
-    try {
-      await ref.read(offlineWorkoutServiceProvider).deleteSet(removed.id);
-    } catch (e) {
-      debugPrint('[WorkoutSessionScreen] uncompleteSet failed: $e');
-      if (!mounted) return;
-      setState(() {
-        final current = _setsByExercise.putIfAbsent(exerciseId, () => []);
-        current.insert(index.clamp(0, current.length), removed);
-        if (removed.isPr) _prCount++;
-        _draftSetsByExercise[exerciseId]?.remove(restored);
-      });
-      showAppSnack(
-        context,
-        "Couldn't undo that set. Check your connection and try again.",
-        tone: AppSnackTone.error,
-      );
     }
   }
 
@@ -631,265 +608,1014 @@ class _WorkoutSessionScreenState extends ConsumerState<WorkoutSessionScreen>
     setState(() => _restActive = false);
   }
 
-  void _toggleRestForExercise(String exerciseId) {
+  void _addRestTime(int seconds) {
     setState(() {
-      _restEnabledByExercise[exerciseId] =
-          !(_restEnabledByExercise[exerciseId] ?? false);
+      _restRemaining += seconds;
+      if (_restRemaining < 0) _restRemaining = 0;
     });
   }
 
-  // ─── Build ───────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    if (_isCreating) {
-      return const Scaffold(
-        backgroundColor: AppTheme.surface,
+    final p = context.tether;
+
+    // Loading state
+    if (_isCreating || _session == null) {
+      return Scaffold(
+        backgroundColor: TetherTokens.ink,
         body: Center(
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation(AppTheme.primaryContainer),
+            valueColor: AlwaysStoppedAnimation(p.accent),
           ),
         ),
       );
     }
 
-    if (_session == null) {
-      return Scaffold(
-        backgroundColor: AppTheme.surface,
-        body: Center(
-          child: _error != null
-              ? ConnectErrorState(onRetry: () => _showNameDialog())
-              : const CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation(AppTheme.primaryContainer),
-                ),
-        ),
-      );
-    }
-
     final isCompleted = _session!.endedAt != null;
+    final workoutName = _session!.notes?.isNotEmpty == true
+        ? _session!.notes!
+        : 'Workout';
 
-    return PopScope(
-      canPop: !_isEnding,
-      child: Scaffold(
-        backgroundColor: AppTheme.surface,
-        body: Stack(
+    return Scaffold(
+      backgroundColor: TetherTokens.ink,
+      body: SafeArea(
+        child: Column(
           children: [
-            // ── Main scrollable content ──────────────────────────────────────
-            CustomScrollView(
-              slivers: [
-                // Sticky header
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SessionHeaderDelegate(
-                    session: _session!,
-                    elapsed: _formatElapsed(_elapsed),
-                    isEnding: _isEnding,
-                    onEnd: _endSession,
-                    topInset: MediaQuery.of(context).padding.top,
-                    isCompleted: isCompleted,
+            // Header
+            _buildHeader(p, workoutName, isCompleted),
+            
+            // Stats bar
+            _buildStatsBar(p),
+            
+            const SizedBox(height: 16),
+            
+            // Error banner
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildErrorBanner(_error!),
+              ),
+            
+            if (_error != null)
+              const SizedBox(height: 16),
+            
+            // PR Banner
+            if (_prCount > 0 && _prBannerCtrl.value > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ScaleTransition(
+                  scale: CurvedAnimation(
+                    parent: _prBannerCtrl,
+                    curve: Curves.elasticOut,
                   ),
+                  child: _buildPrBanner(p),
                 ),
-
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8, bottom: 12),
-                    child: WorkoutStatsBar(
-                      elapsed: _elapsed,
-                      totalVolumeKg: _totalVolumeKg,
-                      totalSets: _totalSets,
-                      exercises: _exerciseOrder
-                          .map((id) => _exerciseMap[id])
-                          .whereType<Exercise>(),
-                    ),
-                  ),
-                ),
-
-                // Error banner
-                if (_error != null)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppTheme.containerMargin,
-                        12,
-                        AppTheme.containerMargin,
-                        0,
-                      ),
-                      child: _InlineBanner(message: _error!, isError: true),
-                    ),
-                  ),
-
-                // PR banner
-                SliverToBoxAdapter(
-                  child: ScaleTransition(
-                    scale: CurvedAnimation(
-                      parent: _prBannerCtrl,
-                      curve: Curves.elasticOut,
-                    ),
-                    child: _prBannerCtrl.value > 0
-                        ? Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppTheme.containerMargin,
-                              12,
-                              AppTheme.containerMargin,
-                              0,
-                            ),
-                            child: _PrBanner(
-                              prCount: _prCount,
-                              lastPrExerciseName: _lastPrExerciseName,
-                              lastPrValue: _lastPrValue,
-                              lastPrImageUrl: _lastPrImageUrl,
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ),
-
-                // Exercise cards (Hevy-style inline logging)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppTheme.containerMargin,
-                    0,
-                    AppTheme.containerMargin,
-                    0,
-                  ),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate((_, i) {
-                      final exerciseId = _exerciseOrder[i];
-                      final exercise = _exerciseMap[exerciseId];
-                      if (exercise == null) return const SizedBox.shrink();
-                      final logged = (_setsByExercise[exerciseId] ?? [])
-                          .map(
-                            (s) => LoggedSetEntry(
-                              id: s.id,
-                              setNumber: s.setNumber,
-                              weightKg: s.weightKg,
-                              reps: s.reps,
-                              rpe: s.rpe,
-                              isPr: s.isPr,
-                            ),
-                          )
-                          .toList();
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: HevyExerciseCard(
-                          key: ValueKey(exerciseId),
-                          exercise: exercise,
-                          loggedSets: logged,
-                          draftSets: isCompleted
-                              ? const []
-                              : (_draftSetsByExercise[exerciseId]
-                                          ?.isNotEmpty ==
-                                      true
-                                  ? _draftSetsByExercise[exerciseId]!
-                                  : [DraftSetEntry.empty()]),
-                          previousSet: _previousByExercise[exerciseId],
-                          readOnly: isCompleted,
-                          restEnabled: _restEnabledByExercise[exerciseId] ?? false,
-                          onOpenInfo: () => _openExerciseInfo(exerciseId),
-                          onAddDraftSet: () => _addDraftSet(exerciseId),
-                          onRemoveExercise: isCompleted
-                              ? null
-                              : () => _removeExercise(exerciseId),
-                          onToggleRest: isCompleted
-                              ? null
-                              : () => _toggleRestForExercise(exerciseId),
-                          onCompleteDraft: (draft, weight, reps, rpe) =>
-                              _completeDraftSet(
-                            exerciseId,
-                            draft,
-                            weight,
-                            reps,
-                            rpe,
+              ),
+            
+            if (_prCount > 0 && _prBannerCtrl.value > 0)
+              const SizedBox(height: 16),
+            
+            // Exercise list
+            Expanded(
+              child: _exerciseOrder.isEmpty
+                  ? _buildEmptyState(p)
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _exerciseOrder.length,
+                      itemBuilder: (context, index) {
+                        final exerciseId = _exerciseOrder[index];
+                        final exercise = _exerciseMap[exerciseId];
+                        if (exercise == null) return const SizedBox.shrink();
+                        
+                        final logged = _setsByExercise[exerciseId] ?? [];
+                        final drafts = _draftSetsByExercise[exerciseId] ?? [];
+                        final previous = _previousByExercise[exerciseId];
+                        
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: 12,
+                            top: index == _exerciseOrder.length - 1 ? 0 : 0,
                           ),
-                          onUncompleteSet: (set) =>
-                              _uncompleteSet(exerciseId, set.id),
-                          notes: _notesByExercise[exerciseId] ?? '',
-                          onNotesChanged: (value) =>
-                              _notesByExercise[exerciseId] = value,
-                        ),
-                      );
-                    }, childCount: _exerciseOrder.length),
-                  ),
-                ),
-
-                // Empty state
-                if (_exerciseOrder.isEmpty)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppTheme.containerMargin,
-                        AppTheme.stackLg,
-                        AppTheme.containerMargin,
-                        0,
-                      ),
-                      child: _EmptySessionState(),
+                          child: _buildExerciseCard(
+                            p,
+                            exerciseId: exerciseId,
+                            exercise: exercise,
+                            logged: logged,
+                            drafts: drafts,
+                            previous: previous,
+                            isCompleted: isCompleted,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            
+            // Bottom padding for FAB
+            if (!isCompleted) const SizedBox(height: 80),
+          ],
+        ),
+      ),
+      // Add exercise button (only if not completed)
+      floatingActionButton: isCompleted
+          ? null
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _pickExercise,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: p.accent,
+                    foregroundColor: TetherTokens.ink,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(TetherTokens.rPill),
                     ),
                   ),
-
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: isCompleted
-                        ? 32
-                        : MediaQuery.of(context).padding.bottom + 96,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_rounded, color: TetherTokens.ink),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Add exercise',
+                        style: TetherText.sans(
+                          16,
+                          w: TetherTokens.w600,
+                          color: TetherTokens.ink,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+              ),
+            ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      // Rest timer bottom sheet
+      bottomSheet: _restActive ? _buildRestTimerSheet(p) : null,
+    );
+  }
+
+  Widget _buildEmptyState(TetherPalette p) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.fitness_center_rounded,
+            size: 64,
+            color: TetherTokens.cream.withOpacity(0.2),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No exercises yet',
+            style: TetherText.sans(
+              18,
+              w: TetherTokens.w600,
+              color: TetherTokens.cream.withOpacity(0.5),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap "Add exercise" to get started',
+            style: TetherText.sans(
+              14,
+              color: TetherTokens.cream.withOpacity(0.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(TetherPalette p, String workoutName, bool isCompleted) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+      child: Row(
+        children: [
+          // Back button
+          IconButton(
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: TetherTokens.cream,
+              size: 32,
+            ),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          
+          // Workout name (centered)
+          Expanded(
+            child: Center(
+              child: Text(
+                workoutName,
+                style: TetherText.sans(28, color: TetherTokens.cream, w: TetherTokens.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          
+          // Finish button (only if not completed)
+          if (!isCompleted)
+            GestureDetector(
+              onTap: _endSession,
+              child: Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: p.accent,
+                  borderRadius: BorderRadius.circular(TetherTokens.rPill),
+                ),
+                child: Center(
+                  child: Text(
+                    'Finish',
+                    style: TetherText.sans(
+                      15,
+                      w: TetherTokens.w600,
+                      color: TetherTokens.ink,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(width: 44), // Balance spacing
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsBar(TetherPalette p) {
+    final elapsed = _formatElapsed(_elapsed);
+    final volumeKg = _totalVolumeKg.round();
+    final setsCompleted = _totalSets;
+    final totalPlannedSets = _exerciseOrder.fold<int>(
+      0,
+      (sum, id) {
+        final completed = _setsByExercise[id]?.length ?? 0;
+        final drafts = _draftSetsByExercise[id]?.length ?? 0;
+        return sum + completed + drafts;
+      },
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // TIME
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TIME',
+                style: TetherText.label(
+                  11,
+                  TetherTokens.cream.withOpacity(0.5),
+                  ls: 0.88,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                elapsed,
+                style: TetherText.numeral(44, p.accent),
+              ),
+            ],
+          ),
+          
+          // VOLUME
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'VOLUME',
+                style: TetherText.label(
+                  11,
+                  TetherTokens.cream.withOpacity(0.5),
+                  ls: 0.88,
+                ),
+              ),
+              const SizedBox(height: 4),
+              RichText(
+                text: TextSpan(
+                  text: '$volumeKg',
+                  style: TetherText.numeral(30, TetherTokens.cream),
+                  children: [
+                    TextSpan(
+                      text: ' kg',
+                      style: TetherText.sans(
+                        14,
+                        color: TetherTokens.cream.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          
+          // SETS
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'SETS',
+                style: TetherText.label(
+                  11,
+                  TetherTokens.cream.withOpacity(0.5),
+                  ls: 0.88,
+                ),
+              ),
+              const SizedBox(height: 4),
+              RichText(
+                text: TextSpan(
+                  text: '$setsCompleted',
+                  style: TetherText.numeral(30, TetherTokens.cream),
+                  children: [
+                    if (totalPlannedSets > setsCompleted)
+                      TextSpan(
+                        text: ' / $totalPlannedSets',
+                        style: TetherText.sans(
+                          14,
+                          color: TetherTokens.cream.withOpacity(0.5),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExerciseCard(
+    TetherPalette p, {
+    required String exerciseId,
+    required Exercise exercise,
+    required List<_LocalSet> logged,
+    required List<DraftSetEntry> drafts,
+    required ProgressData? previous,
+    required bool isCompleted,
+  }) {
+    final isExpanded = _expandedExercises.contains(exerciseId);
+    final completedCount = logged.length;
+    final totalCount = logged.length + drafts.length;
+    final muscles = exercise.bodyParts.isNotEmpty 
+        ? exercise.bodyParts.join(', ') 
+        : 'Exercise';
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (isExpanded) {
+            _expandedExercises.remove(exerciseId);
+          } else {
+            _expandedExercises.add(exerciseId);
+          }
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: TetherTokens.nightCard,
+          borderRadius: BorderRadius.circular(TetherTokens.rCard),
+        ),
+        child: Column(
+          children: [
+            // Header row
+            Row(
+              children: [
+                // Exercise image placeholder
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: TetherTokens.nightRaised,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      exercise.name.substring(0, 1).toUpperCase(),
+                      style: TetherText.sans(
+                        20,
+                        w: TetherTokens.w600,
+                        color: p.accent,
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(width: 12),
+                
+                // Name and progress
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exercise.name,
+                        style: TetherText.sans(
+                          18,
+                          w: TetherTokens.w600,
+                          color: TetherTokens.cream,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isExpanded 
+                            ? muscles 
+                            : '$completedCount of $totalCount sets',
+                        style: TetherText.sans(
+                          13,
+                          color: TetherTokens.cream.withOpacity(0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Menu button
+                IconButton(
+                  icon: Icon(
+                    Icons.more_vert_rounded,
+                    color: TetherTokens.cream.withOpacity(0.5),
+                    size: 20,
+                  ),
+                  onPressed: isCompleted ? null : () => _showExerciseMenu(exerciseId),
                 ),
               ],
             ),
-
-            // ── Rest timer overlay ───────────────────────────────────────────
-            if (_restActive)
-              Positioned(
-                left: AppTheme.containerMargin,
-                right: AppTheme.containerMargin,
-                bottom: MediaQuery.of(context).padding.bottom + 16,
-                child: _RestTimerCard(
-                  remaining: _restRemaining,
-                  total: _restDurationSecs,
-                  onDismiss: _dismissRest,
-                  onAdjust: (secs) => setState(() => _restDurationSecs = secs),
-                ),
-              ),
-            if (!_restActive && !isCompleted)
-              Positioned(
-                left: AppTheme.containerMargin,
-                right: AppTheme.containerMargin,
-                bottom: MediaQuery.of(context).padding.bottom + 16,
-                child: PrimaryButton(
-                  label: 'Add exercise',
-                  icon: Symbols.add,
-                  onPressed: _pickExercise,
-                ),
-              ),
+            
+            // Expanded set table
+            if (isExpanded) ...[
+              const SizedBox(height: 16),
+              _buildSetTable(p, exerciseId, logged, drafts, previous, isCompleted),
+            ],
           ],
         ),
       ),
     );
   }
-}
 
-String _prImageForBodyPart(String? bodyPart) {
-  const map = {
-    'chest':
-        'https://images.unsplash.com/photo-1534368786749-b63e05c92717?w=800&q=80',
-    'back':
-        'https://images.unsplash.com/photo-1603287681836-b174ce5074c2?w=800&q=80',
-    'upper arms':
-        'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=800&q=80',
-    'shoulders':
-        'https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=800&q=80',
-    'upper legs':
-        'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&q=80',
-    'lower legs':
-        'https://images.unsplash.com/photo-1560089000-7433a4ebbd64?w=800&q=80',
-    'waist':
-        'https://images.unsplash.com/photo-1517963879433-6ad2b056d712?w=800&q=80',
-    'cardio':
-        'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=800&q=80',
-  };
-  return map[bodyPart?.toLowerCase()] ??
-      'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=800&q=80';
+  Widget _buildSetTable(
+    TetherPalette p,
+    String exerciseId,
+    List<_LocalSet> logged,
+    List<DraftSetEntry> drafts,
+    ProgressData? previous,
+    bool isCompleted,
+  ) {
+    return Column(
+      children: [
+        // Column headers
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 40,
+                child: Text(
+                  'SET',
+                  style: TetherText.label(
+                    10,
+                    TetherTokens.cream.withOpacity(0.4),
+                    ls: 0.6,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  'PREVIOUS',
+                  style: TetherText.label(
+                    10,
+                    TetherTokens.cream.withOpacity(0.4),
+                    ls: 0.6,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 70,
+                child: Text(
+                  'KG',
+                  style: TetherText.label(
+                    10,
+                    TetherTokens.cream.withOpacity(0.4),
+                    ls: 0.6,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 60,
+                child: Text(
+                  'REPS',
+                  style: TetherText.label(
+                    10,
+                    TetherTokens.cream.withOpacity(0.4),
+                    ls: 0.6,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 40),
+            ],
+          ),
+        ),
+        
+        const SizedBox(height: 8),
+        
+        // Logged sets (completed)
+        ...logged.asMap().entries.map((entry) {
+          final setNum = entry.key + 1;
+          final set = entry.value;
+          return _buildCompletedSetRow(p, setNum, set);
+        }),
+        
+        // Draft sets (not yet completed)
+        if (!isCompleted)
+          ...drafts.asMap().entries.map((entry) {
+            final setNum = logged.length + entry.key + 1;
+            final draft = entry.value;
+            final previousForSet = previous; // TODO: Show previous for this specific set number
+            return _buildDraftSetRow(p, exerciseId, setNum, draft, previousForSet);
+          }),
+        
+        // Add set button
+        if (!isCompleted) ...[
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => _addDraftSet(exerciseId),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: TetherTokens.cream.withOpacity(0.2),
+                  width: 1,
+                  style: BorderStyle.solid,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text(
+                  '+ Add set',
+                  style: TetherText.sans(
+                    14,
+                    w: TetherTokens.w600,
+                    color: TetherTokens.cream.withOpacity(0.6),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCompletedSetRow(TetherPalette p, int setNum, _LocalSet set) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          // Set number
+          SizedBox(
+            width: 40,
+            child: Text(
+              '$setNum',
+              style: TetherText.sans(
+                16,
+                w: TetherTokens.w600,
+                color: TetherTokens.cream.withOpacity(0.7),
+              ),
+            ),
+          ),
+          
+          // Previous (empty for completed sets)
+          const Expanded(child: SizedBox()),
+          
+          // KG (display only)
+          Container(
+            width: 70,
+            height: 40,
+            decoration: BoxDecoration(
+              color: TetherTokens.nightRaised,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: Text(
+                '${set.weightKg.toStringAsFixed(set.weightKg == set.weightKg.round() ? 0 : 1)}',
+                style: TetherText.sans(
+                  16,
+                  w: TetherTokens.w600,
+                  color: TetherTokens.cream,
+                ),
+              ),
+            ),
+          ),
+          
+          const SizedBox(width: 10),
+          
+          // REPS (display only)
+          Container(
+            width: 50,
+            height: 40,
+            decoration: BoxDecoration(
+              color: TetherTokens.nightRaised,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: Text(
+                '${set.reps}',
+                style: TetherText.sans(
+                  16,
+                  w: TetherTokens.w600,
+                  color: TetherTokens.cream,
+                ),
+              ),
+            ),
+          ),
+          
+          const SizedBox(width: 10),
+          
+          // Check (completed)
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: p.accent,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.check_rounded,
+              color: TetherTokens.ink,
+              size: 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDraftSetRow(
+    TetherPalette p,
+    String exerciseId,
+    int setNum,
+    DraftSetEntry draft,
+    ProgressData? previous,
+  ) {
+    final weightController = TextEditingController(
+      text: draft.weightKg > 0 ? draft.weightKg.toStringAsFixed(draft.weightKg == draft.weightKg.round() ? 0 : 1) : '',
+    );
+    final repsController = TextEditingController(
+      text: draft.reps > 0 ? '${draft.reps}' : '',
+    );
+    
+    final previousText = previous != null 
+        ? '${previous.weightKg!.toStringAsFixed(0)} kg × ${previous.reps}' 
+        : '';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          // Set number
+          SizedBox(
+            width: 40,
+            child: Text(
+              '$setNum',
+              style: TetherText.sans(
+                16,
+                w: TetherTokens.w600,
+                color: TetherTokens.cream.withOpacity(0.7),
+              ),
+            ),
+          ),
+          
+          // Previous
+          Expanded(
+            child: Text(
+              previousText,
+              style: TetherText.sans(
+                13,
+                color: TetherTokens.cream.withOpacity(0.4),
+              ),
+            ),
+          ),
+          
+          // KG input
+          SizedBox(
+            width: 70,
+            child: TextField(
+              controller: weightController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textAlign: TextAlign.center,
+              style: TetherText.sans(
+                16,
+                w: TetherTokens.w600,
+                color: TetherTokens.cream,
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: TetherTokens.nightRaised,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                hintText: '0',
+                hintStyle: TetherText.sans(
+                  16,
+                  color: TetherTokens.cream.withOpacity(0.3),
+                ),
+              ),
+              onChanged: (value) {
+                final kg = double.tryParse(value) ?? 0;
+                final draftList = _draftSetsByExercise[exerciseId];
+                if (draftList != null) {
+                  final draftItem = draftList.firstWhere(
+                    (d) => d.localId == draft.localId,
+                    orElse: () => draft,
+                  );
+                  draftItem.weightKg = kg;
+                }
+              },
+            ),
+          ),
+          
+          const SizedBox(width: 10),
+          
+          // REPS input
+          SizedBox(
+            width: 50,
+            child: TextField(
+              controller: repsController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: TetherText.sans(
+                16,
+                w: TetherTokens.w600,
+                color: TetherTokens.cream,
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: TetherTokens.nightRaised,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                hintText: '0',
+                hintStyle: TetherText.sans(
+                  16,
+                  color: TetherTokens.cream.withOpacity(0.3),
+                ),
+              ),
+              onChanged: (value) {
+                final reps = int.tryParse(value) ?? 0;
+                final draftList = _draftSetsByExercise[exerciseId];
+                if (draftList != null) {
+                  final draftItem = draftList.firstWhere(
+                    (d) => d.localId == draft.localId,
+                    orElse: () => draft,
+                  );
+                  draftItem.reps = reps;
+                }
+              },
+            ),
+          ),
+          
+          const SizedBox(width: 10),
+          
+          // Check button
+          GestureDetector(
+            onTap: () {
+              final weight = double.tryParse(weightController.text) ?? 0;
+              final reps = int.tryParse(repsController.text) ?? 0;
+              if (weight > 0 && reps > 0) {
+                _completeDraftSet(exerciseId, draft, weight, reps, null);
+              }
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: TetherTokens.nightRaised,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.check_rounded,
+                color: TetherTokens.cream.withOpacity(0.3),
+                size: 20,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestTimerSheet(TetherPalette p) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      decoration: BoxDecoration(
+        color: TetherTokens.cream,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(TetherTokens.rSheet),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Timer display
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'REST',
+                style: TetherText.label(
+                  11,
+                  TetherTokens.ink.withOpacity(0.5),
+                  ls: 0.88,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _formatRestTime(_restRemaining),
+                style: TetherText.numeral(36, TetherTokens.ink),
+              ),
+            ],
+          ),
+          
+          const SizedBox(width: 24),
+          
+          // - button
+          _buildTimerButton(
+            icon: Icons.remove_rounded,
+            onPressed: () => _addRestTime(-15),
+          ),
+          
+          const SizedBox(width: 12),
+          
+          // + button
+          _buildTimerButton(
+            icon: Icons.add_rounded,
+            onPressed: () => _addRestTime(15),
+          ),
+          
+          const Spacer(),
+          
+          // Skip button
+          GestureDetector(
+            onTap: _dismissRest,
+            child: Container(
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              decoration: BoxDecoration(
+                color: TetherTokens.ink,
+                borderRadius: BorderRadius.circular(TetherTokens.rPill),
+              ),
+              child: Center(
+                child: Text(
+                  'Skip',
+                  style: TetherText.sans(
+                    15,
+                    w: TetherTokens.w600,
+                    color: TetherTokens.cream,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimerButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: TetherTokens.ink.withOpacity(0.05),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: TetherTokens.ink),
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  String _formatRestTime(int seconds) {
+    final mins = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildPrBanner(TetherPalette p) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: p.accent.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(TetherTokens.rCard),
+        border: Border.all(color: p.accent.withOpacity(0.4), width: 2),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: p.accent,
+              borderRadius: BorderRadius.circular(TetherTokens.rPill),
+            ),
+            child: Text(
+              'PR',
+              style: TetherText.sans(
+                12,
+                w: TetherTokens.w800,
+                color: TetherTokens.ink,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _prCount == 1
+                      ? 'New personal record!'
+                      : '$_prCount personal records this session!',
+                  style: TetherText.sans(
+                    16,
+                    w: TetherTokens.w600,
+                    color: p.accent,
+                  ),
+                ),
+                if (_lastPrExerciseName != null && _lastPrValue != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '$_lastPrExerciseName: $_lastPrValue',
+                    style: TetherText.sans(
+                      13,
+                      color: TetherTokens.cream.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE53935).withOpacity(0.15),
+        borderRadius: BorderRadius.circular(TetherTokens.rCard),
+        border: Border.all(color: const Color(0xFFE53935).withOpacity(0.4), width: 2),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.error_outline_rounded,
+            color: const Color(0xFFE53935),
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: TetherText.sans(
+                14,
+                color: TetherTokens.cream.withOpacity(0.9),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.close_rounded,
+              color: TetherTokens.cream.withOpacity(0.5),
+              size: 20,
+            ),
+            onPressed: () => setState(() => _error = null),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -915,292 +1641,16 @@ class _LocalSet {
   });
 
   factory _LocalSet.fromWorkoutSet(WorkoutSet s) => _LocalSet(
-    id: s.id,
-    exercise:
-        s.exercise ??
-        Exercise(id: s.exerciseId, name: 'Exercise', isCustom: false),
-    setNumber: s.setNumber ?? 1,
-    weightKg: s.weightKg ?? 0,
-    reps: s.reps ?? 0,
-    rpe: s.rpe,
-    isPr: false,
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sticky session header — elapsed timer + workout name + End button
-// ─────────────────────────────────────────────────────────────────────────────
-class _SessionHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final WorkoutSession session;
-  final String elapsed;
-  final bool isEnding;
-  final VoidCallback onEnd;
-  final double topInset;
-  final bool isCompleted;
-
-  const _SessionHeaderDelegate({
-    required this.session,
-    required this.elapsed,
-    required this.isEnding,
-    required this.onEnd,
-    required this.topInset,
-    required this.isCompleted,
-  });
-
-  @override
-  double get minExtent => topInset + 56;
-  @override
-  double get maxExtent => topInset + 56;
-
-  @override
-  bool shouldRebuild(_SessionHeaderDelegate old) =>
-      elapsed != old.elapsed ||
-      isEnding != old.isEnding ||
-      topInset != old.topInset ||
-      isCompleted != old.isCompleted;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Container(
-      color: AppTheme.surface,
-      padding: EdgeInsets.only(
-        left: AppTheme.containerMargin,
-        right: AppTheme.containerMargin,
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(top: topInset),
-        child: SizedBox(
-          height: 56,
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: isEnding ? null : () => Navigator.pop(context),
-                icon: const Icon(
-                  Symbols.keyboard_arrow_down,
-                  size: 28,
-                  color: AppTheme.onSurface,
-                ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  isCompleted
-                      ? ((session.notes?.isNotEmpty == true)
-                          ? session.notes!
-                          : 'Workout session')
-                      : 'Log workout',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
-                      ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (!isCompleted) ...[
-                Text(
-                  elapsed,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: AppTheme.primaryContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(
-                  Symbols.timer,
-                  size: 18,
-                  color: AppTheme.primaryContainer,
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: isEnding ? null : onEnd,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 9,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                      boxShadow: AppTheme.neonGlow(opacity: 0.22, blur: 14),
-                    ),
-                    child: isEnding
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation(
-                                AppTheme.onPrimaryFixed,
-                              ),
-                            ),
-                          )
-                        : Text(
-                            'Finish',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(
-                                  color: AppTheme.onPrimaryFixed,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _RestTimerCard — bottom overlay that auto-starts after each set
-// ─────────────────────────────────────────────────────────────────────────────
-class _RestTimerCard extends StatelessWidget {
-  final int remaining;
-  final int total;
-  final VoidCallback onDismiss;
-  final ValueChanged<int> onAdjust;
-
-  const _RestTimerCard({
-    required this.remaining,
-    required this.total,
-    required this.onDismiss,
-    required this.onAdjust,
-  });
-
-  String get _display {
-    final m = (remaining ~/ 60).toString().padLeft(2, '0');
-    final s = (remaining % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = total > 0 ? remaining / total : 0.0;
-
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.stackMd),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-        border: Border.all(color: AppTheme.primaryContainer.withOpacity(0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 24,
-            offset: const Offset(0, -4),
-          ),
-          ...AppTheme.neonGlow(opacity: 0.15),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Symbols.timer,
-                size: 16,
-                color: AppTheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Rest',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppTheme.onSurfaceVariant,
-                ),
-              ),
-              const Spacer(),
-              // ─10s
-              _AdjustButton(
-                label: '−10',
-                onTap: () => onAdjust((total - 10).clamp(10, 300)),
-              ),
-              const SizedBox(width: 8),
-              // +10s
-              _AdjustButton(
-                label: '+10',
-                onTap: () => onAdjust((total + 10).clamp(10, 300)),
-              ),
-              const SizedBox(width: 8),
-              // Dismiss
-              GestureDetector(
-                onTap: onDismiss,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Symbols.close,
-                    size: 14,
-                    color: AppTheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Progress bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 4,
-              backgroundColor: AppTheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                remaining <= 10 ? AppTheme.error : AppTheme.primaryContainer,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Countdown
-          Text(
-            _display,
-            style: Theme.of(context).textTheme.displayMedium?.copyWith(
-              color: remaining <= 10
-                  ? AppTheme.error
-                  : AppTheme.primaryContainer,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdjustButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _AdjustButton({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Text(label, style: Theme.of(context).textTheme.labelSmall),
-      ),
-    );
-  }
+        id: s.id,
+        exercise:
+            s.exercise ??
+            Exercise(id: s.exerciseId, name: 'Exercise', isCustom: false),
+        setNumber: s.setNumber ?? 1,
+        weightKg: s.weightKg ?? 0,
+        reps: s.reps ?? 0,
+        rpe: s.rpe,
+        isPr: false,
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1264,10 +1714,15 @@ class _WorkoutNameDialog extends StatelessWidget {
   }
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// End Workout Dialog
+// ─────────────────────────────────────────────────────────────────────────────
 class _EndWorkoutDialog extends StatelessWidget {
   final String duration;
   final int setCount;
   final int pendingFilledCount;
+  
   const _EndWorkoutDialog({
     required this.duration,
     required this.setCount,
@@ -1337,665 +1792,6 @@ class _DialogStat extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Small utility widgets
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _InlineBanner extends StatelessWidget {
-  final String message;
-  final bool isError;
-  const _InlineBanner({required this.message, required this.isError});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isError
-            ? AppTheme.errorContainer.withOpacity(0.15)
-            : AppTheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-        border: Border.all(
-          color: isError
-              ? AppTheme.error.withOpacity(0.3)
-              : Colors.white.withOpacity(0.07),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isError ? Symbols.error : Symbols.info,
-            size: 14,
-            color: isError ? AppTheme.error : AppTheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: isError ? AppTheme.error : AppTheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PrBanner extends StatelessWidget {
-  final int prCount;
-  final String? lastPrExerciseName;
-  final String? lastPrValue;
-  final String? lastPrImageUrl;
-
-  const _PrBanner({
-    required this.prCount,
-    this.lastPrExerciseName,
-    this.lastPrValue,
-    this.lastPrImageUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryContainer.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-        border: Border.all(color: AppTheme.primaryContainer.withOpacity(0.4)),
-        boxShadow: AppTheme.neonGlow(opacity: 0.2),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryContainer,
-              borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-              boxShadow: AppTheme.neonGlow(opacity: 0.5, blur: 10),
-            ),
-            child: Text(
-              'PR',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppTheme.onPrimaryFixed,
-                fontSize: 11,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              prCount == 1
-                  ? 'New personal record!'
-                  : '$prCount personal records this session!',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: AppTheme.primaryContainer,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptySessionState extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceContainerHigh,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
-          ),
-          child: Icon(
-            Symbols.fitness_center,
-            size: 28,
-            color: AppTheme.onSurfaceVariant.withOpacity(0.4),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'No sets yet',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: AppTheme.onSurface,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Add an exercise below and log your first set',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.onSurfaceVariant,
-              ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WorkoutCompleteScreen — post-workout summary
-// ─────────────────────────────────────────────────────────────────────────────
-class WorkoutCompleteScreen extends ConsumerStatefulWidget {
-  final String sessionId;
-  final Duration duration;
-  final int totalSets;
-  final int exerciseCount;
-  final int prCount;
-  final double totalVolume;
-  final String? workoutName;
-  final String? initialCaption;
-
-  const WorkoutCompleteScreen({
-    super.key,
-    required this.sessionId,
-    required this.duration,
-    required this.totalSets,
-    required this.exerciseCount,
-    required this.prCount,
-    required this.totalVolume,
-    this.workoutName,
-    this.initialCaption,
-  });
-
-  @override
-  ConsumerState<WorkoutCompleteScreen> createState() =>
-      _WorkoutCompleteScreenState();
-}
-
-class _WorkoutCompleteScreenState extends ConsumerState<WorkoutCompleteScreen> {
-  bool _isSharing = false;
-  bool _isShared = false;
-  bool _isQueued = false;
-  bool _isUploadingPhoto = false;
-  String? _imagePath;
-  XFile? _selectedPhoto;
-  late final TextEditingController _captionCtrl;
-  late final TextEditingController _titleCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _captionCtrl = TextEditingController(text: widget.initialCaption ?? '');
-    _titleCtrl = TextEditingController(text: widget.workoutName ?? '');
-  }
-
-  @override
-  void dispose() {
-    _captionCtrl.dispose();
-    _titleCtrl.dispose();
-    super.dispose();
-  }
-
-  String _formatDuration(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60);
-    if (h > 0) return '${h}h ${m}m';
-    if (m > 0) return '${m}m ${s}s';
-    return '${s}s';
-  }
-
-  Future<void> _pickPhoto() async {
-    final source = await showAppActionSheet<ImageSource>(
-      context,
-      title: 'Add a photo',
-      actions: const [
-        AppSheetAction(
-          icon: Symbols.photo_camera,
-          label: 'Take a photo',
-          value: ImageSource.camera,
-        ),
-        AppSheetAction(
-          icon: Symbols.photo_library,
-          label: 'Choose from gallery',
-          value: ImageSource.gallery,
-        ),
-      ],
-    );
-    if (source == null || !mounted) return;
-    setState(() => _isUploadingPhoto = true);
-    try {
-      final photo = await ref
-          .read(postMediaServiceProvider)
-          .pickWorkoutPhoto(source: source);
-      if (mounted && photo != null) {
-        setState(() {
-          _selectedPhoto = photo;
-          _imagePath = null;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Couldn't attach photo: $e")));
-      }
-    } finally {
-      if (mounted) setState(() => _isUploadingPhoto = false);
-    }
-  }
-
-  Future<void> _shareWorkout() async {
-    setState(() => _isSharing = true);
-    final content = _captionCtrl.text.trim();
-    try {
-      await ref.read(apiClientProvider).ensureFreshToken();
-      final sync = ref.read(syncServiceProvider);
-
-      // Sync session + sets to the server before uploading a photo or sharing.
-      String? resolvedServerId;
-      if (await checkIsOnline()) {
-        resolvedServerId =
-            await sync.ensureSessionReadyForShare(widget.sessionId);
-      }
-
-      if (_selectedPhoto != null && _imagePath == null) {
-        final imagePath = await ref
-            .read(postMediaServiceProvider)
-            .uploadWorkoutPhoto(_selectedPhoto!);
-        if (mounted) setState(() => _imagePath = imagePath);
-      }
-      if (resolvedServerId == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                await checkIsOnline()
-                    ? 'Workout saved locally. It will share once sync completes.'
-                    : 'Workout saved offline. It will share when you reconnect.',
-              ),
-            ),
-          );
-        }
-        await PendingWorkoutShareQueue(ref.read(appDatabaseProvider)).enqueue(
-          sessionId: widget.sessionId,
-          content: content,
-          imagePath: _imagePath,
-        );
-        if (mounted) setState(() => _isQueued = true);
-        return;
-      }
-
-      final confirmedServerId = resolvedServerId;
-      final post = await ref
-          .read(socialServiceProvider)
-          .shareWorkout(
-            sessionId: confirmedServerId,
-            content: content,
-            imagePath: _imagePath,
-          );
-      ref.read(feedProvider.notifier).prependPost(post);
-      if (mounted) setState(() => _isShared = true);
-    } on DioException catch (e) {
-      debugPrint('[WorkoutCompleteScreen] share failed: $e');
-      final status = e.response?.statusCode;
-      if (_selectedPhoto != null && _imagePath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'The photo could not be uploaded. Check your connection and retry.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-      if (mounted) {
-        final message = status == 429
-            ? 'Too many shares recently. Wait a bit and try again.'
-            : status == 404
-                ? 'Workout is still syncing. Try again in a few seconds.'
-                : e.type == DioExceptionType.receiveTimeout ||
-                        e.type == DioExceptionType.connectionTimeout
-                    ? 'The server took too long. Your share was queued — try Feed again shortly.'
-                    : 'Could not share right now. Your workout was queued to retry.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
-      // Don't queue rate-limited shares — retrying would hit the same cap.
-      if (status == 429) return;
-      await PendingWorkoutShareQueue(ref.read(appDatabaseProvider)).enqueue(
-        sessionId: widget.sessionId,
-        content: content,
-        imagePath: _imagePath,
-      );
-      if (mounted) setState(() => _isQueued = true);
-    } catch (e) {
-      debugPrint('[WorkoutCompleteScreen] share failed: $e');
-      if (_selectedPhoto != null && _imagePath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'The photo could not be uploaded. Check your connection and retry.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-      await PendingWorkoutShareQueue(ref.read(appDatabaseProvider)).enqueue(
-        sessionId: widget.sessionId,
-        content: content,
-        imagePath: _imagePath,
-      );
-      if (mounted) {
-        setState(() => _isQueued = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not share right now. Your workout was queued to retry.',
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSharing = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final dateLabel =
-        '${now.day} ${_monthName(now.month)} ${now.year}, ${_formatTime(now)}';
-
-    return Scaffold(
-      backgroundColor: AppTheme.surface,
-      appBar: AppBar(
-        backgroundColor: AppTheme.surface,
-        title: const Text('Save Workout'),
-        actions: [
-          if (!_isShared && !_isQueued)
-            TextButton(
-              onPressed: _isSharing ? null : _shareWorkout,
-              child: Text(
-                _isSharing ? 'Saving...' : 'Save',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: AppTheme.primaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppTheme.containerMargin),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: _titleCtrl,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                decoration: InputDecoration(
-                  hintText: 'Workout name',
-                  border: InputBorder.none,
-                  suffixIcon: _titleCtrl.text.isNotEmpty
-                      ? IconButton(
-                          onPressed: () => setState(() => _titleCtrl.clear()),
-                          icon: const Icon(Symbols.close, size: 18),
-                        )
-                      : null,
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  _SaveStat(
-                    label: 'Duration',
-                    value: _formatDuration(widget.duration),
-                    highlight: true,
-                  ),
-                  _SaveStat(
-                    label: 'Volume',
-                    value: '${widget.totalVolume.toStringAsFixed(0)} kg',
-                  ),
-                  _SaveStat(
-                    label: 'Sets',
-                    value: '${widget.totalSets}',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              if (!_isShared && !_isQueued) ...[
-                GestureDetector(
-                  onTap: _isUploadingPhoto ? null : _pickPhoto,
-                  child: Container(
-                    height: _selectedPhoto != null ? null : 160,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.15),
-                        style: BorderStyle.solid,
-                      ),
-                    ),
-                    child: _selectedPhoto != null
-                        ? ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(AppTheme.radiusXl),
-                            child: AspectRatio(
-                              aspectRatio: 16 / 9,
-                              child: Image.file(
-                                File(_selectedPhoto!.path),
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                              ),
-                            ),
-                          )
-                        : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Symbols.add_photo_alternate,
-                                size: 32,
-                                color: AppTheme.onSurfaceVariant
-                                    .withOpacity(0.6),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _isUploadingPhoto
-                                    ? 'Attaching photo...'
-                                    : 'Add a photo',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                      color: AppTheme.onSurfaceVariant,
-                                    ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Description',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: AppTheme.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _captionCtrl,
-                  maxLength: 500,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    hintText:
-                        'How did your workout go? Leave some notes here...',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _SaveSettingRow(
-                  icon: Symbols.calendar_today,
-                  label: 'Date',
-                  value: dateLabel,
-                ),
-                const Divider(height: 24),
-                _SaveSettingRow(
-                  icon: Symbols.visibility,
-                  label: 'Visibility',
-                  value: 'Gym members & coaches',
-                ),
-              ],
-              if (widget.prCount > 0) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryContainer.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-                    border: Border.all(
-                      color: AppTheme.primaryContainer.withOpacity(0.25),
-                    ),
-                  ),
-                  child: Text(
-                    '${widget.prCount} new personal record${widget.prCount > 1 ? 's' : ''}!',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: AppTheme.primaryContainer,
-                        ),
-                  ),
-                ),
-              ],
-              if (_isShared || _isQueued) ...[
-                const SizedBox(height: 16),
-                Text(
-                  _isShared
-                      ? 'Workout shared with your gym.'
-                      : 'Workout saved — it will appear in the feed once sync finishes.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.primaryContainer,
-                      ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              if (!_isShared && !_isQueued)
-                SecondaryButton(
-                  label: _isSharing ? 'Sharing...' : 'Share with Gym',
-                  icon: Symbols.share,
-                  onPressed: _isSharing ? null : _shareWorkout,
-                ),
-              const SizedBox(height: 10),
-              PrimaryButton(
-                label: _isShared || _isQueued ? 'Done' : 'Skip & Finish',
-                icon: Symbols.check,
-                onPressed: () {
-                  ref.invalidate(homeDataProvider);
-                  ref.invalidate(feedProvider);
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _monthName(int month) {
-    const names = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return names[month - 1];
-  }
-
-  String _formatTime(DateTime time) {
-    final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
-    final period = time.hour >= 12 ? 'PM' : 'AM';
-    final minute = time.minute.toString().padLeft(2, '0');
-    return '$hour:$minute $period';
-  }
-}
-
-class _SaveStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool highlight;
-
-  const _SaveStat({
-    required this.label,
-    required this.value,
-    this.highlight = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: AppTheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: highlight
-                      ? AppTheme.primaryContainer
-                      : AppTheme.onSurface,
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SaveSettingRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _SaveSettingRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: AppTheme.onSurfaceVariant),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
-        ),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.onSurfaceVariant,
-              ),
-        ),
-      ],
     );
   }
 }

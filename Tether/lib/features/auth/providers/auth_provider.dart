@@ -7,7 +7,7 @@ import '../models/auth_models.dart';
 //
 // Reactively streams Supabase auth state changes.
 // The _AuthGate in main.dart watches this to route between
-// GymSelectionScreen and MainNavigation automatically.
+// WelcomeScreen and MainNavigation automatically.
 //
 // Supabase persists sessions to secure storage and restores them on cold
 // start — so a valid session from a previous launch will be emitted here

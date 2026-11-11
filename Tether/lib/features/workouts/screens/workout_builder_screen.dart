@@ -1,17 +1,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/sync/connectivity_provider.dart';
+import '../../../core/navigation/main_navigation.dart';
 import '../models/workout_models.dart';
+import '../models/quick_template.dart';
 import '../services/offline_workout_service.dart';
 import '../services/workout_service.dart';
 import 'exercise_picker_sheet.dart';
 import '../widgets/exercise_info_sheet.dart';
 import '../widgets/exercise_thumbnail.dart';
+import '../widgets/quick_template_selector.dart';
+import '../widgets/rest_timer_picker.dart';
+import '../widgets/muscle_balance_chip.dart';
 import 'workout_session_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,6 +156,96 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
     });
   }
 
+  // Load quick template
+  Future<void> _loadQuickTemplate(QuickTemplate template) async {
+    if (_nameCtrl.text.isEmpty) {
+      _nameCtrl.text = template.name;
+    }
+    
+    setState(() => _loadingTemplate = true);
+    final svc = ref.read(offlineWorkoutServiceProvider);
+
+    for (final te in template.exercises) {
+      try {
+        final results = await svc.listExercises(query: te.name);
+        final match = results.isNotEmpty ? results.first : null;
+        if (match == null) {
+          debugPrint('[WorkoutBuilder] Quick template exercise not found: ${te.name}');
+          continue;
+        }
+
+        final sets = List.generate(
+          te.sets,
+          (_) => BuilderSet(
+            reps: te.reps,
+            durationSecs: te.durationSecs,
+            distanceM: te.distanceM,
+          ),
+        );
+
+        if (mounted) {
+          setState(() {
+            _exercises.add(BuilderExerciseEntry(
+              uid: '${match.id}_${DateTime.now().microsecondsSinceEpoch}',
+              exercise: match,
+              sets: sets,
+            ));
+          });
+        }
+        
+        // Small delay to avoid overwhelming the database
+        await Future.delayed(const Duration(milliseconds: 50));
+      } catch (e) {
+        debugPrint('[WorkoutBuilder] quick template load exercise failed: $e');
+      }
+    }
+
+    if (mounted) {
+      setState(() => _loadingTemplate = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${template.name} loaded • ${template.exercises.length} exercises'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: AppTheme.surfaceContainerHigh,
+        ),
+      );
+    }
+  }
+
+  // Duplicate an exercise
+  void _duplicateExercise(String uid) {
+    final idx = _exercises.indexWhere((e) => e.uid == uid);
+    if (idx < 0) return;
+
+    final original = _exercises[idx];
+    final duplicate = BuilderExerciseEntry(
+      uid: '${original.exercise.id}_${DateTime.now().microsecondsSinceEpoch}',
+      exercise: original.exercise,
+      sets: original.sets
+          .map((s) => BuilderSet(
+                weightKg: s.weightKg,
+                reps: s.reps,
+                durationSecs: s.durationSecs,
+                distanceM: s.distanceM,
+              ))
+          .toList(),
+      isExpanded: false,
+    );
+
+    setState(() {
+      _exercises.insert(idx + 1, duplicate);
+    });
+
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${original.exercise.name} duplicated'),
+        duration: const Duration(seconds: 1),
+        backgroundColor: AppTheme.surfaceContainerHigh,
+      ),
+    );
+  }
+
   void _removeExercise(String uid) {
     setState(() => _exercises.removeWhere((e) => e.uid == uid));
   }
@@ -202,6 +298,16 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
     });
   }
 
+  void _updateDefaultRest(String uid, int restSeconds) {
+    final idx = _exercises.indexWhere((e) => e.uid == uid);
+    if (idx < 0) return;
+    setState(() {
+      _exercises[idx] = _exercises[idx].copyWith(
+        defaultRestSeconds: restSeconds,
+      );
+    });
+  }
+
   // ── Start workout ──────────────────────────────────────────────────────────
   Future<void> _startWorkout() async {
     if (_exercises.isEmpty) return;
@@ -221,9 +327,9 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => WorkoutSessionScreen(
-            session: session,
-            builderExercises: _exercises,
-          ),
+                  session: session,
+                  builderExercises: _exercises,
+                ),
         ),
       );
     } catch (e) {
@@ -319,6 +425,30 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
                   textCapitalization: TextCapitalization.words,
                 ),
                 actions: [
+                  // History button (when empty)
+                  if (_exercises.isEmpty && !_loadingTemplate)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: IconButton(
+                        onPressed: () {
+                          // WorkoutHistoryPicker.show(
+                          //   context,
+                          //   onSelect: _loadFromHistory,
+                          // );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('History loader coming soon!'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.history, size: 20),
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppTheme.surfaceContainerHigh,
+                        ),
+                        tooltip: 'Load from history',
+                      ),
+                    ),
                   // BEGIN button — disabled until exercises added
                   Padding(
                     padding: const EdgeInsets.only(right: 12),
@@ -430,33 +560,58 @@ class _WorkoutBuilderScreenState extends ConsumerState<WorkoutBuilderScreen> {
                   ),
                 ),
 
+              // ── Quick Templates (when empty) ─────────────────────────
+              if (_exercises.isEmpty && !_loadingTemplate)
+                SliverToBoxAdapter(
+                  child: QuickTemplateSelector(
+                    onSelect: _loadQuickTemplate,
+                  ),
+                ),
+
+              // ── Muscle Balance (when exercises exist) ────────────────
+              if (_exercises.isNotEmpty && !_loadingTemplate)
+                SliverToBoxAdapter(
+                  child: MuscleBalanceChip(
+                    exercises: _exercises,
+                  ),
+                ),
+
               // ── Exercise list ─────────────────────────────────────────
               SliverPadding(
                 padding: const EdgeInsets.symmetric(
                     horizontal: AppTheme.containerMargin),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (_, i) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _BuilderExerciseCard(
-                        entry: _exercises[i],
-                        exerciseNumber: i + 1,
-                        onOpenInfo: () => ExerciseInfoSheet.show(
-                          context,
-                          exercise: _exercises[i].exercise,
-                          routineId: widget.routine?.id,
-                        ),
-                        onToggleExpand: () => _toggleExpand(_exercises[i].uid),
-                        onRemove: () => _removeExercise(_exercises[i].uid),
-                        onAddSet: () => _addSet(_exercises[i].uid),
-                        onRemoveSet: (si) =>
-                            _removeSet(_exercises[i].uid, si),
-                        onUpdateSet: (si, s) =>
-                            _updateSet(_exercises[i].uid, si, s),
+                sliver: SliverReorderableList(
+                  onReorder: (oldIndex, newIndex) {
+                    setState(() {
+                      if (newIndex > oldIndex) {
+                        newIndex--;
+                      }
+                      final exercise = _exercises.removeAt(oldIndex);
+                      _exercises.insert(newIndex, exercise);
+                    });
+                    HapticFeedback.mediumImpact();
+                  },
+                  itemBuilder: (_, i) => Padding(
+                    key: ValueKey(_exercises[i].uid),
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _BuilderExerciseCard(
+                      entry: _exercises[i],
+                      exerciseNumber: i + 1,
+                      onOpenInfo: () => ExerciseInfoSheet.show(
+                        context,
+                        exercise: _exercises[i].exercise,
+                        routineId: widget.routine?.id,
                       ),
+                      onToggleExpand: () => _toggleExpand(_exercises[i].uid),
+                      onRemove: () => _removeExercise(_exercises[i].uid),
+                      onDuplicate: () => _duplicateExercise(_exercises[i].uid),
+                      onAddSet: () => _addSet(_exercises[i].uid),
+                      onRemoveSet: (si) => _removeSet(_exercises[i].uid, si),
+                      onUpdateSet: (si, s) => _updateSet(_exercises[i].uid, si, s),
+                      onUpdateDefaultRest: (rest) => _updateDefaultRest(_exercises[i].uid, rest),
                     ),
-                    childCount: _exercises.length,
                   ),
+                  itemCount: _exercises.length,
                 ),
               ),
 
@@ -532,9 +687,11 @@ class _BuilderExerciseCard extends StatelessWidget {
   final VoidCallback onOpenInfo;
   final VoidCallback onToggleExpand;
   final VoidCallback onRemove;
+  final VoidCallback onDuplicate;
   final VoidCallback onAddSet;
   final ValueChanged<int> onRemoveSet;
   final void Function(int index, BuilderSet updated) onUpdateSet;
+  final ValueChanged<int> onUpdateDefaultRest;
 
   const _BuilderExerciseCard({
     required this.entry,
@@ -542,9 +699,11 @@ class _BuilderExerciseCard extends StatelessWidget {
     required this.onOpenInfo,
     required this.onToggleExpand,
     required this.onRemove,
+    required this.onDuplicate,
     required this.onAddSet,
     required this.onRemoveSet,
     required this.onUpdateSet,
+    required this.onUpdateDefaultRest,
   });
 
   @override
@@ -561,9 +720,21 @@ class _BuilderExerciseCard extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 8, 8),
+            padding: const EdgeInsets.fromLTRB(4, 12, 8, 8),
             child: Row(
               children: [
+                // Drag handle
+                ReorderableDragStartListener(
+                  index: exerciseNumber - 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Icon(
+                      Symbols.drag_indicator,
+                      size: 20,
+                      color: AppTheme.onSurfaceVariant.withOpacity(0.5),
+                    ),
+                  ),
+                ),
                 ExerciseThumbnail(exercise: ex, size: 44),
                 const SizedBox(width: 10),
                 Expanded(
@@ -594,6 +765,23 @@ class _BuilderExerciseCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Duplicate button
+                GestureDetector(
+                  onTap: onDuplicate,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryContainer.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      Symbols.content_copy,
+                      size: 14,
+                      color: AppTheme.primaryContainer,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 GestureDetector(
                   onTap: onRemove,
                   child: Container(
@@ -644,6 +832,16 @@ class _BuilderExerciseCard extends StatelessWidget {
                 canRemove: entry.sets.length > 1,
               ),
             ),
+            
+            // Rest timer presets
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+              child: RestTimerPicker(
+                currentSeconds: entry.defaultRestSeconds,
+                onSelect: onUpdateDefaultRest,
+              ),
+            ),
+            
             // Add set button
             GestureDetector(
               onTap: onAddSet,

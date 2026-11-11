@@ -181,15 +181,19 @@ class _PrimaryButtonState extends State<PrimaryButton>
                         ),
                         const SizedBox(width: 8),
                       ],
-                      Text(
-                        widget.label,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: enabled
-                              ? AppTheme.onPrimaryFixed
-                              : AppTheme.onSurfaceVariant,
-                          letterSpacing: -0.2,
+                      Flexible(
+                        child: Text(
+                          widget.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: enabled
+                                ? AppTheme.onPrimaryFixed
+                                : AppTheme.onSurfaceVariant,
+                            letterSpacing: -0.2,
+                          ),
                         ),
                       ),
                     ],

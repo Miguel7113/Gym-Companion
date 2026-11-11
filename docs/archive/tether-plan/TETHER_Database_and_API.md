@@ -19,7 +19,7 @@ Clients (Flutter, future Next.js)
 ```
 
 - **Do not** treat Supabase client + RLS as the primary API for workouts/social.
-- RLS (`008_rls_policies.sql`) is defense-in-depth for optional direct reads later.
+- RLS (`009_rls_policies.sql`) is defense-in-depth for optional direct reads later.
 - JWT helpers expect metadata: `gym_id`, `member_id`, `role`.
 
 ---
@@ -224,10 +224,10 @@ When building `tether-web`:
 
 | Migration | Topic |
 |-----------|--------|
-| early `001–007` | Core schema, workouts, social, food drop |
-| `008_rls_policies.sql` | JWT helpers + RLS |
-| `009_workout_media_certification.sql` | Media + certification |
-| `010_routine_session_link.sql` | Routine ↔ session |
+| early `001–007` | Core schema, workouts, social, storage |
+| `009_rls_policies.sql` | JWT helpers + RLS |
+| `010_workout_media_certification.sql` | Media + certification |
+| `011_routine_session_link.sql` | Routine ↔ session |
 | `011_gym_timezone.sql` | Gym timezone |
 
 Always keep Prisma schema and SQL migrations in sync when changing production.

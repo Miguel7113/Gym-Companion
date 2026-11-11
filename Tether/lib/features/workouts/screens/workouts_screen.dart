@@ -1,37 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import '../../../core/theme/tether_palette.dart';
+import '../../../core/theme/tether_text.dart';
+import '../../../core/theme/tether_tokens.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/glass_card.dart';
+import '../../../core/navigation/main_navigation.dart';
 import '../../../core/widgets/media_catalog.dart';
-import '../../../core/providers/nav_provider.dart';
 import '../models/workout_models.dart';
 import '../services/offline_workout_service.dart';
 import '../services/workout_service.dart';
-import '../data/default_programs.dart';
-import '../../social/screens/buddies_screen.dart';
-import 'workout_builder_screen.dart';
 import 'workout_session_screen.dart';
+import 'workout_builder_screen.dart';
 import 'routines_screen.dart';
 import 'workout_history_screen.dart';
 import 'exercise_picker_sheet.dart';
-import 'progress_screen.dart';
 import 'workout_detail_screen.dart';
+import '../../social/screens/buddies_screen.dart';
+import '../widgets/leaderboard_card.dart';
+import '../../profile/models/personal_record.dart';
+import '../../profile/services/personal_records_service.dart';
+import '../../auth/providers/auth_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'leaderboard_screen.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WorkoutsScreen — Train tab (Hevy-inspired hub)
-// ─────────────────────────────────────────────────────────────────────────────
+/// Redesigned Train tab matching Tether design system
+/// Dark theme with electric lime accents
 class WorkoutsScreen extends ConsumerStatefulWidget {
   const WorkoutsScreen({super.key});
 
   @override
-  ConsumerState<WorkoutsScreen> createState() => _WorkoutsScreenState();
+  ConsumerState<WorkoutsScreen> createState() =>
+      _WorkoutsScreenState();
 }
 
-class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
+class _WorkoutsScreenState
+    extends ConsumerState<WorkoutsScreen> {
+  WorkoutSession? _activeSession;
+  List<WorkoutTemplate> _templates = [];
+  bool _loadingTemplates = true;
+  
+  // Body parts state
+  List<String> _bodyParts = [];
+  bool _loadingBodyParts = true;
+  bool _bodyPartsError = false;
+  
+  // Leaderboard state
+  List<LeaderboardEntry> _leaderboardTop3 = [];
+  bool _loadingLeaderboard = true;
+  
+  // Filters
   int _selectedFilter = 0;
   final Set<String> _selectedEquipment = {};
-
+  
   static const List<_Filter> _filters = [
     _Filter('All', null),
     _Filter('Strength', 'strength'),
@@ -40,50 +61,49 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     _Filter('Mobility', 'mobility'),
   ];
 
-  List<String> _bodyParts = [];
-  bool _loadingBodyParts = true;
-  bool _bodyPartsError = false;
-  WorkoutSession? _activeSession;
-  List<WorkoutTemplate> _gymPrograms = [];
-  bool _loadingGymPrograms = true;
-
   @override
   void initState() {
     super.initState();
-    _loadBodyParts();
-    _loadActiveSession();
-    _loadGymPrograms();
+    _load();
   }
 
-  Future<void> _loadGymPrograms() async {
-    setState(() => _loadingGymPrograms = true);
-    try {
-      final programs =
-          await ref.read(workoutServiceProvider).listGymPrograms();
-      if (mounted) {
-        setState(() {
-          _gymPrograms = programs;
-          _loadingGymPrograms = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('[WorkoutsScreen] gym programs unavailable: $e');
-      if (mounted) setState(() => _loadingGymPrograms = false);
-    }
+  Future<void> _load() async {
+    await Future.wait([
+      _loadActiveSession(),
+      _loadTemplates(),
+      _loadBodyParts(),
+      _loadLeaderboard(),
+    ]);
   }
 
   Future<void> _loadActiveSession() async {
     try {
-      final session =
-          await ref.read(offlineWorkoutServiceProvider).getActiveSession();
+      final session = await ref
+          .read(offlineWorkoutServiceProvider)
+          .getActiveSession();
       if (mounted) {
         setState(() {
-          _activeSession =
-              session != null && session.endedAt == null ? session : null;
+          _activeSession = session != null && session.endedAt == null ? session : null;
         });
       }
     } catch (e) {
       debugPrint('[WorkoutsScreen] active session unavailable: $e');
+    }
+  }
+
+  Future<void> _loadTemplates() async {
+    setState(() => _loadingTemplates = true);
+    try {
+      final templates = await ref.read(workoutServiceProvider).listRoutines();
+      if (mounted) {
+        setState(() {
+          _templates = templates;
+          _loadingTemplates = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[WorkoutsScreen] templates failed: $e');
+      if (mounted) setState(() => _loadingTemplates = false);
     }
   }
 
@@ -103,7 +123,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[WorkoutsScreen] _loadBodyParts failed: $e');
+      debugPrint('[WorkoutsScreen] body parts failed: $e');
       if (mounted) {
         setState(() {
           _loadingBodyParts = false;
@@ -113,12 +133,39 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     }
   }
 
-  Future<void> _refresh() async {
-    await Future.wait([
-      _loadBodyParts(),
-      _loadActiveSession(),
-      _loadGymPrograms(),
-    ]);
+  Future<void> _loadLeaderboard() async {
+    setState(() => _loadingLeaderboard = true);
+    try {
+      final user = ref.read(currentUserProvider);
+      if (user?.gymId == null) {
+        if (mounted) setState(() => _loadingLeaderboard = false);
+        return;
+      }
+
+      final token = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (token == null) {
+        if (mounted) setState(() => _loadingLeaderboard = false);
+        return;
+      }
+
+      final service = ref.read(personalRecordsServiceProvider);
+      final leaderboard = await service.getLeaderboard(
+        gymId: user!.gymId,
+        exercise: 'Bench Press',
+        limit: 3,
+        token: token,
+      );
+
+      if (mounted) {
+        setState(() {
+          _leaderboardTop3 = leaderboard;
+          _loadingLeaderboard = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[WorkoutsScreen] leaderboard failed: $e');
+      if (mounted) setState(() => _loadingLeaderboard = false);
+    }
   }
 
   void _openExerciseList({String? bodyPart}) {
@@ -160,187 +207,108 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // IndexedStack keeps Train mounted — re-check active session when the
-    // tab becomes visible so Finish/Share cannot leave a phantom "Continue".
-    ref.listen<int>(navIndexProvider, (prev, next) {
-      if (next == NavTab.train && prev != null && prev != NavTab.train) {
-        _loadActiveSession();
-      }
-    });
+    final p = context.tether;
 
     return Scaffold(
-      backgroundColor: AppTheme.surface,
-      appBar: _TrainAppBar(
-        onProgressTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ProgressScreen()),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        color: AppTheme.primaryContainer,
-        backgroundColor: AppTheme.surfaceContainerHigh,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                AppTheme.containerMargin,
-                8,
-                AppTheme.containerMargin,
-                0,
-              ),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _StartWorkoutPanel(
-                    activeSession: _activeSession,
-                    onStartBlank: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const WorkoutBuilderScreen(),
-                      ),
-                    ).then((_) => _loadActiveSession()),
-                    onContinue: _activeSession == null
-                        ? null
-                        : () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => WorkoutSessionScreen(
-                                  session: _activeSession,
-                                ),
-                              ),
-                            ).then((_) => _loadActiveSession()),
-                    onRoutines: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const RoutinesScreen(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.stackMd),
-                  _QuickLinksRow(
-                    onRoutines: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const RoutinesScreen(),
-                      ),
-                    ),
-                    onExercises: () => _openExerciseList(),
-                    onHistory: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => Scaffold(
-                          backgroundColor: AppTheme.surface,
-                          appBar: AppBar(
-                            backgroundColor: AppTheme.surface,
-                            elevation: 0,
-                            title: const Text('History'),
-                          ),
-                          body: const WorkoutHistoryScreen(),
-                        ),
-                      ),
-                    ),
-                    onBuddies: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const BuddiesScreen(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.stackLg),
-                  if (_gymPrograms.isNotEmpty || _loadingGymPrograms) ...[
-                    _SectionHeader(
-                      title: 'Gym programs',
-                      actionLabel: 'Routines',
-                      onAction: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const RoutinesScreen(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppTheme.stackSm),
-                  ],
-                ]),
-              ),
-            ),
-
-            if (_gymPrograms.isNotEmpty)
+      backgroundColor: TetherTokens.ink,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _load,
+          color: p.accent,
+          backgroundColor: TetherTokens.nightCard,
+          child: CustomScrollView(
+            slivers: [
+              // Header
               SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 148,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppTheme.containerMargin,
-                    ),
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: Clip.none,
-                    itemCount: _gymPrograms.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (_, i) => _GymProgramCard(
-                      program: _gymPrograms[i],
-                      onTap: () => Navigator.push(
+                child: _buildHeader(p),
+              ),
+
+              // Active Session Card (if exists)
+              if (_activeSession != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: _buildActiveSessionCard(p),
+                  ),
+                ),
+
+              // Current Routines Card (placeholder - shows active program)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _buildCurrentRoutinesCard(p),
+                ),
+              ),
+
+              // START TRAINING Button
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _buildStartTrainingButton(p),
+                ),
+              ),
+
+              // Quick Access Cards (Routines, History, Buddies)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _buildQuickAccessRow(p),
+                ),
+              ),
+
+              // Leaderboard Card
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: LeaderboardCard(
+                    topThree: _leaderboardTop3,
+                    loading: _loadingLeaderboard,
+                    onViewAll: () {
+                      Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              WorkoutDetailScreen(routine: _gymPrograms[i]),
+                          builder: (_) => const LeaderboardScreen(
+                            initialExercise: 'Bench Press',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // Browse Exercises Section
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Browse exercises',
+                        style: TetherText.sans(20, w: TetherTokens.w800),
+                      ),
+                      GestureDetector(
+                        onTap: () => _openExerciseList(),
+                        child: Text(
+                          'See all',
+                          style: TetherText.sans(
+                            14,
+                            color: p.accent,
+                            w: TetherTokens.w600,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
 
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                AppTheme.containerMargin,
-                AppTheme.stackLg,
-                AppTheme.containerMargin,
-                0,
-              ),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _SectionHeader(title: 'Programs'),
-                  const SizedBox(height: AppTheme.stackSm),
-                ]),
-              ),
-            ),
-
-            // Programs horizontal list (edge-to-edge scroll)
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 148,
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppTheme.containerMargin,
-                  ),
-                  scrollDirection: Axis.horizontal,
-                  clipBehavior: Clip.none,
-                  itemCount: defaultPrograms.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (_, i) =>
-                      _ProgramCard(program: defaultPrograms[i]),
-                ),
-              ),
-            ),
-
-            // Browse exercises
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                AppTheme.containerMargin,
-                AppTheme.stackLg,
-                AppTheme.containerMargin,
-                0,
-              ),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _SectionHeader(
-                    title: 'Browse exercises',
-                    actionLabel: 'See all',
-                    onAction: () => _openExerciseList(),
-                  ),
-                  const SizedBox(height: AppTheme.stackSm),
-                  Row(
+              // Exercise Filters
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Row(
                     children: [
                       _EquipmentChip(
                         selectedCount: _selectedEquipment.length,
@@ -361,60 +329,459 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: AppTheme.stackSm),
-                ]),
+                ),
+              ),
+
+              // Body Part Grid
+              if (_loadingBodyParts)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 1.4,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (_, __) => _buildSkeletonBodyPartTile(),
+                      childCount: 6,
+                    ),
+                  ),
+                )
+              else if (_bodyPartsError)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildErrorState(() => _loadBodyParts()),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 1.4,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (_, i) => _buildBodyPartTile(_bodyParts[i]),
+                      childCount: _bodyParts.length,
+                    ),
+                  ),
+                ),
+
+              // Bottom padding
+              const SliverPadding(
+                padding: EdgeInsets.only(bottom: 100),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Header
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildHeader(TetherPalette p) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Train',
+            style: TetherText.sans(32, w: TetherTokens.w800),
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    backgroundColor: TetherTokens.ink,
+                    appBar: AppBar(
+                      backgroundColor: TetherTokens.ink,
+                      elevation: 0,
+                      title: Text(
+                        'History',
+                        style: TetherText.sans(20, w: TetherTokens.w800),
+                      ),
+                    ),
+                    body: const WorkoutHistoryScreen(),
+                  ),
+                ),
+              );
+            },
+            icon: Icon(
+              Symbols.bar_chart,
+              size: 24,
+              color: TetherTokens.cream,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Active Session Card
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildActiveSessionCard(TetherPalette p) {
+    return GestureDetector(
+      onTap: () {
+        if (_activeSession == null) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WorkoutSessionScreen(session: _activeSession),
+          ),
+        ).then((_) => _loadActiveSession());
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: p.accent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'WORKOUT IN PROGRESS',
+                    style: TetherText.sans(
+                      12,
+                      color: TetherTokens.ink,
+                      w: TetherTokens.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _activeSession?.notes ?? 'Untitled Workout',
+                    style: TetherText.sans(
+                      18,
+                      color: TetherTokens.ink,
+                      w: TetherTokens.w800,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
+            Icon(
+              Symbols.chevron_right,
+              color: TetherTokens.ink,
+              size: 28,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-            if (_loadingBodyParts)
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.containerMargin,
-                ),
-                sliver: SliverGrid(
-                  gridDelegate: _muscleGridDelegate,
-                  delegate: _SkeletonMuscleGridDelegate(count: 6),
-                ),
-              )
-            else if (_bodyPartsError)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppTheme.containerMargin,
-                  ),
-                  child: ConnectErrorState(onRetry: _loadBodyParts),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.containerMargin,
-                ),
-                sliver: SliverGrid(
-                  gridDelegate: _muscleGridDelegate,
-                  delegate: SliverChildBuilderDelegate(
-                    (_, i) => _MuscleGroupTile(
-                      bodyPart: _bodyParts[i],
-                      onTap: () => _openExerciseList(bodyPart: _bodyParts[i]),
+  // ─────────────────────────────────────────────────────────────────────────
+  // Current Routines Card (Active Program)
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildCurrentRoutinesCard(TetherPalette p) {
+    // Use the first template if available, otherwise show placeholder
+    final routine = _templates.isNotEmpty ? _templates.first : null;
+    
+    final programName = routine?.name ?? 'No Active Routine';
+    final weekInfo = routine != null ? '${routine.exercises.length} exercises' : 'Start a new routine';
+    final todayInfo = routine != null 
+        ? 'Ready to train • ${routine.durationMins ?? 0} min'
+        : 'Create or select a routine';
+    
+    // Day circles - fixed width to prevent overflow
+    final dayStates = [
+      ('M', true, false),   // (label, completed, isToday)
+      ('T', true, false),
+      ('W', false, true),  // Today
+      ('T', false, false),
+      ('F', false, false),
+      ('S', false, false),
+      ('S', false, false),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: TetherTokens.cream,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          // Program card content
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: TetherTokens.nightCard,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        programName,
+                        style: TetherText.sans(
+                          20,
+                          color: TetherTokens.cream,
+                          w: TetherTokens.w800,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    childCount: _bodyParts.length,
+                    const SizedBox(width: 8),
+                    Text(
+                      weekInfo,
+                      style: TetherText.sans(
+                        12,
+                        color: TetherTokens.cream.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Day circles - use Wrap to prevent overflow
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: dayStates.map((day) {
+                    final (label, completed, isToday) = day;
+                    return Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: completed
+                            ? p.accent
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: isToday
+                              ? p.accent
+                              : completed
+                                  ? p.accent
+                                  : TetherTokens.cream.withOpacity(0.2),
+                          width: isToday ? 2 : 1,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          label,
+                          style: TetherText.sans(
+                            14,
+                            color: completed
+                                ? TetherTokens.ink
+                                : TetherTokens.cream,
+                            w: TetherTokens.w600,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+
+                // Today info and Open button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        todayInfo,
+                        style: TetherText.sans(
+                          14,
+                          color: TetherTokens.cream.withOpacity(0.7),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: routine != null
+                          ? () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => RoutinesScreen(),
+                                ),
+                              );
+                            }
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: routine != null 
+                              ? TetherTokens.cream
+                              : TetherTokens.cream.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Open',
+                          style: TetherText.sans(
+                            14,
+                            color: TetherTokens.ink,
+                            w: TetherTokens.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // START TRAINING Button
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildStartTrainingButton(TetherPalette p) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const WorkoutBuilderScreen(),
+          ),
+        ).then((_) => _loadActiveSession());
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: TetherTokens.nightCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: TetherTokens.cream.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            'START TRAINING',
+            style: TetherText.sans(
+              16,
+              color: p.accent,
+              w: TetherTokens.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Quick Access Row (Routines, History, Buddies)
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildQuickAccessRow(TetherPalette p) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildQuickAccessCard(
+            'Routines',
+            Symbols.format_list_bulleted,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const RoutinesScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildQuickAccessCard(
+            'History',
+            Symbols.history,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    backgroundColor: TetherTokens.ink,
+                    appBar: AppBar(
+                      backgroundColor: TetherTokens.ink,
+                      elevation: 0,
+                      title: Text(
+                        'History',
+                        style: TetherText.sans(20, w: TetherTokens.w800),
+                      ),
+                    ),
+                    body: const WorkoutHistoryScreen(),
                   ),
                 ),
-              ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildQuickAccessCard(
+            'Buddies',
+            Symbols.group,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const BuddiesScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                AppTheme.containerMargin,
-                AppTheme.stackLg,
-                AppTheme.containerMargin,
-                100,
-              ),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  const _SectionHeader(title: 'Recent workouts'),
-                  const SizedBox(height: AppTheme.stackSm),
-                  const SizedBox(height: 440, child: WorkoutHistoryScreen()),
-                ]),
+  Widget _buildQuickAccessCard(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: TetherTokens.nightCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: TetherTokens.cream.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 28,
+              color: TetherTokens.cream,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TetherText.sans(
+                12,
+                color: TetherTokens.cream,
+                w: TetherTokens.w600,
               ),
             ),
           ],
@@ -422,237 +789,271 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
       ),
     );
   }
-}
 
-const _muscleGridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
-  crossAxisCount: 2,
-  mainAxisSpacing: 10,
-  crossAxisSpacing: 10,
-  childAspectRatio: 1.4,
-);
+  // ─────────────────────────────────────────────────────────────────────────
+  // Body Part Tile (with image, gradient, and icon)
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildBodyPartTile(String bodyPart) {
+    final icon = _bodyPartIcons[bodyPart.toLowerCase()] ?? Symbols.fitness_center;
+    final displayName = bodyPart
+        .split(' ')
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
 
-class _SkeletonMuscleGridDelegate extends SliverChildBuilderDelegate {
-  _SkeletonMuscleGridDelegate({required int count})
-      : super(
-          (_, __) => const SkeletonBox(
-            width: double.infinity,
-            height: double.infinity,
-            radius: AppTheme.radiusXxl,
-          ),
-          childCount: count,
-        );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// App bar
-// ─────────────────────────────────────────────────────────────────────────────
-class _TrainAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final VoidCallback onProgressTap;
-  const _TrainAppBar({required this.onProgressTap});
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
-
-  @override
-  Widget build(BuildContext context) {
-    return AppBar(
-      backgroundColor: AppTheme.surface,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      titleSpacing: AppTheme.containerMargin,
-      title: Text(
-        'Train',
-        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.6,
-            ),
-      ),
-      centerTitle: false,
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: IconButton(
-            onPressed: onProgressTap,
-            icon: const Icon(
-              Symbols.bar_chart,
-              size: 24,
-              color: AppTheme.onSurface,
-            ),
-            tooltip: 'Progress',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Start workout hub — Hevy CTA hierarchy
-// ─────────────────────────────────────────────────────────────────────────────
-class _StartWorkoutPanel extends StatelessWidget {
-  final WorkoutSession? activeSession;
-  final VoidCallback onStartBlank;
-  final VoidCallback? onContinue;
-  final VoidCallback onRoutines;
-
-  const _StartWorkoutPanel({
-    required this.activeSession,
-    required this.onStartBlank,
-    required this.onContinue,
-    required this.onRoutines,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasActive = activeSession != null;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppTheme.stackMd),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-        boxShadow: AppTheme.cardElevation,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryContainer.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                ),
+    return GestureDetector(
+      onTap: () => _openExerciseList(bodyPart: bodyPart),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background color
+            Container(color: TetherTokens.nightCard),
+            
+            // Body part image
+            Image.asset(
+              AppMedia.bodyPart(bodyPart),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Center(
                 child: Icon(
-                  hasActive ? Symbols.timelapse : Symbols.fitness_center,
-                  size: 20,
-                  color: AppTheme.primaryContainer,
-                  fill: 1,
+                  icon,
+                  size: 32,
+                  color: context.tether.accent.withOpacity(0.3),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
+            ),
+            
+            // Gradient overlay
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.15),
+                    Colors.black.withOpacity(0.78),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Icon badge
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.22),
+                      ),
+                    ),
+                    child: Icon(icon, size: 16, color: Colors.white),
+                  ),
+                  
+                  // Body part name
+                  Text(
+                    displayName,
+                    style: TetherText.sans(
+                      14,
+                      color: Colors.white,
+                      w: TetherTokens.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonBodyPartTile() {
+    return Container(
+      decoration: BoxDecoration(
+        color: TetherTokens.nightCard.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Workout Template Card
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildWorkoutCard(WorkoutTemplate template) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WorkoutDetailScreen(routine: template),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: TetherTokens.nightCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: TetherTokens.cream.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image
+            Expanded(
+              flex: 3,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: TetherTokens.cream.withOpacity(0.05),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
+                  image: template.imageUrl != null && template.imageUrl!.isNotEmpty
+                      ? DecorationImage(
+                          image: NetworkImage(template.imageUrl!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: template.imageUrl == null || template.imageUrl!.isEmpty
+                    ? Center(
+                        child: Icon(
+                          Symbols.fitness_center,
+                          size: 32,
+                          color: TetherTokens.cream.withOpacity(0.3),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+
+            // Info
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      hasActive ? 'Workout in progress' : 'Ready to train?',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: hasActive
-                                ? AppTheme.primaryContainer
-                                : AppTheme.onSurface,
-                          ),
+                      template.name,
+                      style: TetherText.sans(
+                        14,
+                        color: TetherTokens.cream,
+                        w: TetherTokens.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      hasActive
-                          ? 'Pick up where you left off, or start fresh.'
-                          : 'Start empty, or jump in from a routine.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.onSurfaceVariant,
-                          ),
+                      '${template.exercises.length} exercises',
+                      style: TetherText.sans(
+                        12,
+                        color: TetherTokens.cream.withOpacity(0.5),
+                      ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: AppTheme.stackMd),
-          // Primary CTA dominates
-          PrimaryButton(
-            label: hasActive ? 'Continue workout' : 'Start empty workout',
-            icon: hasActive ? Symbols.play_arrow : Symbols.add,
-            onPressed: hasActive ? onContinue : onStartBlank,
-          ),
-          const SizedBox(height: 10),
-          // Secondary actions — visually quieter
-          if (hasActive)
-            Row(
-              children: [
-                Expanded(
-                  child: SecondaryButton(
-                    label: 'New workout',
-                    icon: Symbols.add,
-                    onPressed: onStartBlank,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SecondaryButton(
-                    label: 'Routines',
-                    icon: Symbols.bookmarks,
-                    onPressed: onRoutines,
-                    useAccentText: true,
-                  ),
-                ),
-              ],
-            )
-          else
-            SecondaryButton(
-              label: 'My routines',
-              icon: Symbols.bookmarks,
-              onPressed: onRoutines,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonWorkoutCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: TetherTokens.nightCard.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Empty State
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        children: [
+          Icon(
+            Symbols.fitness_center,
+            size: 48,
+            color: TetherTokens.cream.withOpacity(0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No workouts yet',
+            style: TetherText.sans(
+              18,
+              color: TetherTokens.cream.withOpacity(0.5),
+              w: TetherTokens.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Create your first routine to get started',
+            style: TetherText.sans(
+              14,
+              color: TetherTokens.cream.withOpacity(0.4),
+            ),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quick links — Hevy-style shortcut row
-// ─────────────────────────────────────────────────────────────────────────────
-class _QuickLinksRow extends StatelessWidget {
-  final VoidCallback onRoutines;
-  final VoidCallback onExercises;
-  final VoidCallback onHistory;
-  final VoidCallback onBuddies;
-
-  const _QuickLinksRow({
-    required this.onRoutines,
-    required this.onExercises,
-    required this.onHistory,
-    required this.onBuddies,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
+  Widget _buildErrorState(VoidCallback onRetry) {
+    return Column(
       children: [
-        Expanded(
-          child: _QuickLink(
-            icon: Symbols.bookmarks,
-            label: 'Routines',
-            onTap: onRoutines,
+        Icon(
+          Symbols.error,
+          size: 48,
+          color: TetherTokens.cream.withOpacity(0.3),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Failed to load',
+          style: TetherText.sans(
+            18,
+            color: TetherTokens.cream.withOpacity(0.5),
+            w: TetherTokens.w600,
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _QuickLink(
-            icon: Symbols.exercise,
-            label: 'Exercises',
-            onTap: onExercises,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _QuickLink(
-            icon: Symbols.group,
-            label: 'Buddies',
-            onTap: onBuddies,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _QuickLink(
-            icon: Symbols.history,
-            label: 'History',
-            onTap: onHistory,
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: onRetry,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              color: TetherTokens.cream.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Retry',
+              style: TetherText.sans(
+                14,
+                color: TetherTokens.cream,
+                w: TetherTokens.w600,
+              ),
+            ),
           ),
         ),
       ],
@@ -660,92 +1061,86 @@ class _QuickLinksRow extends StatelessWidget {
   }
 }
 
-class _QuickLink extends StatelessWidget {
-  final IconData icon;
+// ─────────────────────────────────────────────────────────────────────────────
+// Body Part Icons Map
+// ─────────────────────────────────────────────────────────────────────────────
+const Map<String, IconData> _bodyPartIcons = {
+  'chest': Symbols.fitness_center,
+  'back': Symbols.accessibility_new,
+  'upper arms': Symbols.sports_martial_arts,
+  'lower arms': Symbols.sports_martial_arts,
+  'shoulders': Symbols.fitness_center,
+  'upper legs': Symbols.directions_run,
+  'lower legs': Symbols.directions_run,
+  'waist': Symbols.self_improvement,
+  'lower back': Symbols.accessibility_new,
+  'cardio': Symbols.favorite,
+  'neck': Symbols.self_improvement,
+  'full body': Symbols.accessibility,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper Classes
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Filter {
   final String label;
+  final String? value;
+  const _Filter(this.label, this.value);
+}
+
+class _EquipmentChip extends StatelessWidget {
+  final int selectedCount;
   final VoidCallback onTap;
 
-  const _QuickLink({
-    required this.icon,
-    required this.label,
+  const _EquipmentChip({
+    required this.selectedCount,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isSelected = selectedCount > 0;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: AppTheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-          border: Border.all(color: Colors.white.withOpacity(0.07)),
+          color: isSelected
+              ? context.tether.accent.withOpacity(0.2)
+              : TetherTokens.nightCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? context.tether.accent
+                : TetherTokens.cream.withOpacity(0.1),
+            width: 1,
+          ),
         ),
-        child: Column(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 22, color: AppTheme.primaryContainer),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelLarge,
+            Icon(
+              Symbols.fitness_center,
+              size: 16,
+              color: isSelected ? context.tether.accent : TetherTokens.cream,
             ),
+            if (selectedCount > 0) ...[
+              const SizedBox(width: 6),
+              Text(
+                '$selectedCount',
+                style: TetherText.sans(
+                  14,
+                  color: context.tether.accent,
+                  w: TetherTokens.w600,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Section header
-// ─────────────────────────────────────────────────────────────────────────────
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  const _SectionHeader({
-    required this.title,
-    this.actionLabel,
-    this.onAction,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                ),
-          ),
-        ),
-        if (actionLabel != null && onAction != null)
-          GestureDetector(
-            onTap: onAction,
-            child: Text(
-              actionLabel!,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppTheme.primaryContainer,
-                  ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Filters
-// ─────────────────────────────────────────────────────────────────────────────
-class _Filter {
-  final String label;
-  final String? value;
-  const _Filter(this.label, this.value);
 }
 
 class _FilterChipRow extends StatelessWidget {
@@ -763,381 +1158,44 @@ class _FilterChipRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
       child: Row(
-        children: List.generate(
-          filters.length,
-          (i) => Padding(
+        children: List.generate(filters.length, (i) {
+          final isSelected = i == selectedIndex;
+          return Padding(
             padding: EdgeInsets.only(right: i < filters.length - 1 ? 8 : 0),
-            child: MetricChip(
-              label: filters[i].label,
-              isSelected: selectedIndex == i,
+            child: GestureDetector(
               onTap: () => onSelected(i),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? context.tether.accent.withOpacity(0.2)
+                      : TetherTokens.nightCard,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected
+                        ? context.tether.accent
+                        : TetherTokens.cream.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  filters[i].label,
+                  style: TetherText.sans(
+                    14,
+                    color: isSelected ? context.tether.accent : TetherTokens.cream,
+                    w: TetherTokens.w600,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        }),
       ),
     );
   }
 }
 
-class _EquipmentChip extends StatelessWidget {
-  final int selectedCount;
-  final VoidCallback onTap;
-
-  const _EquipmentChip({
-    required this.selectedCount,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final active = selectedCount > 0;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: active
-              ? AppTheme.primaryContainer.withOpacity(0.12)
-              : AppTheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-          border: Border.all(
-            color: active
-                ? AppTheme.primaryContainer.withOpacity(0.45)
-                : Colors.white.withOpacity(0.1),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Symbols.tune,
-              size: 14,
-              color: active
-                  ? AppTheme.primaryContainer
-                  : AppTheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              active ? '$selectedCount' : 'Gear',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: active
-                        ? AppTheme.primaryContainer
-                        : AppTheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Muscle-group tile
-// ─────────────────────────────────────────────────────────────────────────────
-const Map<String, IconData> _bodyPartIcons = {
-  'chest': Symbols.fitness_center,
-  'back': Symbols.accessibility_new,
-  'upper arms': Symbols.sports_martial_arts,
-  'lower arms': Symbols.sports_martial_arts,
-  'shoulders': Symbols.fitness_center,
-  'upper legs': Symbols.directions_run,
-  'lower legs': Symbols.directions_run,
-  'waist': Symbols.self_improvement,
-  'lower back': Symbols.accessibility_new,
-  'cardio': Symbols.favorite,
-  'neck': Symbols.self_improvement,
-  'full body': Symbols.accessibility,
-};
-
-class _MuscleGroupTile extends StatelessWidget {
-  final String bodyPart;
-  final VoidCallback onTap;
-
-  const _MuscleGroupTile({required this.bodyPart, required this.onTap});
-
-  String get _displayName {
-    if (bodyPart.isEmpty) return bodyPart;
-    return bodyPart
-        .split(' ')
-        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
-        .join(' ');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final icon =
-        _bodyPartIcons[bodyPart.toLowerCase()] ?? Symbols.fitness_center;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ColoredBox(color: AppTheme.surfaceContainerHigh),
-            Image.asset(
-              AppMedia.bodyPart(bodyPart),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Center(
-                child: Icon(icon, size: 32, color: AppTheme.primaryContainer),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.15),
-                    Colors.black.withOpacity(0.78),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.14),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white.withOpacity(0.22)),
-                    ),
-                    child: Icon(icon, size: 16, color: Colors.white),
-                  ),
-                  Text(
-                    _displayName,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Program card
-// ─────────────────────────────────────────────────────────────────────────────
-class _GymProgramCard extends StatelessWidget {
-  final WorkoutTemplate program;
-  final VoidCallback onTap;
-
-  const _GymProgramCard({required this.program, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 260,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-          boxShadow: AppTheme.cardElevation,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryContainer.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'GYM',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppTheme.primaryContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ),
-                const Spacer(),
-                const Icon(
-                  Symbols.verified,
-                  size: 16,
-                  color: AppTheme.primaryContainer,
-                ),
-              ],
-            ),
-            const Spacer(),
-            Text(
-              program.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${program.exercises.length} exercises',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProgramCard extends StatelessWidget {
-  final LocalWorkoutTemplate program;
-  const _ProgramCard({required this.program});
-
-  Color get _categoryColor {
-    switch (program.category) {
-      case 'hiit':
-        return const Color(0xFFFF6B35);
-      case 'cardio':
-        return const Color(0xFF2196F3);
-      case 'mobility':
-        return const Color(0xFF4CAF50);
-      default:
-        return AppTheme.primaryContainer;
-    }
-  }
-
-  String get _coverAsset {
-    switch (program.category) {
-      case 'cardio':
-        return AppMedia.homeTrainer;
-      case 'hiit':
-        return AppMedia.homeHero;
-      default:
-        return AppMedia.homeWorkout;
-    }
-  }
-
-  String get _difficultyLabel {
-    final d = program.difficulty;
-    if (d.isEmpty) return d;
-    return '${d[0].toUpperCase()}${d.substring(1)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => WorkoutBuilderScreen(template: program),
-        ),
-      ),
-      child: Container(
-        width: 300,
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-          boxShadow: AppTheme.cardElevation,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 108,
-                height: double.infinity,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.asset(_coverAsset, fit: BoxFit.cover),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            AppTheme.surfaceContainer.withOpacity(0.92),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _categoryColor.withOpacity(0.14),
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.radiusFull),
-                          border: Border.all(
-                            color: _categoryColor.withOpacity(0.4),
-                          ),
-                        ),
-                        child: Text(
-                          _difficultyLabel,
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: _categoryColor,
-                                  ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        program.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${program.durationMins} min · ${program.exercises.length} exercises',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: AppTheme.onSurfaceVariant,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Equipment filter sheet
-// ─────────────────────────────────────────────────────────────────────────────
 class _EquipmentGridFilter extends StatefulWidget {
   final List<String> allEquipments;
   final Set<String> selected;
@@ -1154,109 +1212,121 @@ class _EquipmentGridFilter extends StatefulWidget {
 }
 
 class _EquipmentGridFilterState extends State<_EquipmentGridFilter> {
-  late final Set<String> _local;
+  late Set<String> _selected;
 
   @override
   void initState() {
     super.initState();
-    _local = Set<String>.from(widget.selected);
+    _selected = Set<String>.from(widget.selected);
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
     return Container(
       decoration: const BoxDecoration(
-        color: AppTheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXxl)),
+        color: TetherTokens.nightCard,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 16),
+      padding: const EdgeInsets.all(20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+          Text(
+            'Equipment',
+            style: TetherText.sans(20, w: TetherTokens.w800),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widget.allEquipments.map((eq) {
+              final isSelected = _selected.contains(eq);
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      _selected.remove(eq);
+                    } else {
+                      _selected.add(eq);
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? context.tether.accent.withOpacity(0.2)
+                        : TetherTokens.ink,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? context.tether.accent
+                          : TetherTokens.cream.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
                   child: Text(
-                    'Filter by equipment',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    eq,
+                    style: TetherText.sans(
+                      14,
+                      color: isSelected ? context.tether.accent : TetherTokens.cream,
+                      w: TetherTokens.w600,
+                    ),
                   ),
                 ),
-                if (_local.isNotEmpty)
-                  GestureDetector(
-                    onTap: () => setState(() => _local.clear()),
-                    child: Text(
-                      'Clear',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: AppTheme.primaryContainer,
-                          ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _selected.clear());
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: TetherTokens.ink,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Clear',
+                        style: TetherText.sans(16, w: TetherTokens.w600),
+                      ),
                     ),
                   ),
-              ],
-            ),
-          ),
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.45,
-            ),
-            child: widget.allEquipments.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    widget.onApply(_selected);
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: context.tether.accent,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: widget.allEquipments.length,
-                    itemBuilder: (_, i) {
-                      final eq = widget.allEquipments[i];
-                      return CheckboxListTile(
-                        value: _local.contains(eq),
-                        onChanged: (v) => setState(() {
-                          if (v == true) {
-                            _local.add(eq);
-                          } else {
-                            _local.remove(eq);
-                          }
-                        }),
-                        title: Text(
-                          eq,
-                          style: Theme.of(context).textTheme.bodyMedium,
+                    child: Center(
+                      child: Text(
+                        'Apply',
+                        style: TetherText.sans(
+                          16,
+                          color: TetherTokens.ink,
+                          w: TetherTokens.w600,
                         ),
-                        activeColor: AppTheme.primaryContainer,
-                        checkColor: AppTheme.onPrimaryFixed,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        dense: true,
-                      );
-                    },
+                      ),
+                    ),
                   ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: PrimaryButton(
-              label: _local.isEmpty ? 'Show all' : 'Apply (${_local.length})',
-              onPressed: () {
-                widget.onApply(Set<String>.from(_local));
-                Navigator.pop(context);
-              },
-            ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -33,7 +33,12 @@ src/
 ├── roster/                # Gym member roster management
 ├── gyms/                  # Gym metadata + stats
 ├── workouts/              # Workout session + exercise tracking
-├── food/                  # Nutrition tracking
+├── social/                # Social feed, posts, likes, comments
+├── buddies/               # Buddy linking system
+├── notices/               # Gym announcements
+├── notifications/         # In-app notifications
+├── members/               # Member management
+├── leads/                 # Lead capture
 ├── supabase/              # Supabase Auth SDK wrapper (global)
 └── prisma/                # Prisma client wrapper (global)
 ```
@@ -49,7 +54,9 @@ Gym → GymStaff (staff accounts)
     → GymRoster (authorized members)
     → User (signed-up members)
          → WorkoutSession → WorkoutSet
-         → FoodLog
+         → Post (social feed)
+         → AppNotification
+         → GymBuddyLink
 ```
 
 ---
@@ -100,6 +107,8 @@ AppModule
 ├── ConfigModule (global)
 ├── PrismaModule (global)
 ├── SupabaseModule (global)
+├── ThrottlerModule (global)
+├── HealthModule
 ├── AuthModule
 │   └── RosterModule (forwardRef — circular dep avoidance)
 ├── RosterModule
@@ -108,11 +117,23 @@ AppModule
 │   └── AuthModule
 ├── WorkoutsModule
 │   └── AuthModule
-└── FoodModule
+├── SocialModule
+│   └── AuthModule
+├── BuddiesModule
+│   └── AuthModule
+├── NoticesModule
+│   └── AuthModule
+├── NotificationsModule
+│   └── AuthModule
+├── MembersModule
+│   └── AuthModule
+└── LeadsModule
     └── AuthModule
 ```
 
 Every feature module imports `AuthModule` to access the guards. `AuthModule` and `RosterModule` use `forwardRef()` because `AuthService` calls `RosterService` during the signup flow, and `RosterModule` needs `AuthModule` for its guards.
+
+> **Note:** Food module was removed in Sept 2024 (migration 008). See `phase2-plan.md` appendix for details.
 
 ---
 

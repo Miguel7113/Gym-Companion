@@ -16,6 +16,7 @@ import { NoticesModule } from './notices/notices.module';
 import { BuddiesModule } from './buddies/buddies.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { LeadsModule } from './leads/leads.module';
+import { PersonalRecordsModule } from './personal-records/personal-records.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { LeadsModule } from './leads/leads.module';
     BuddiesModule,
     NotificationsModule,
     LeadsModule,
+    PersonalRecordsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

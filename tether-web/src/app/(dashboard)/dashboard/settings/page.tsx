@@ -6,7 +6,7 @@ import {
 } from '@/lib/api';
 import { requireStaffSession } from '@/lib/auth';
 import { EmptyState, PageHeader, Panel, StatusPill } from '@/components/dashboard/ui';
-import { inviteStaff, updateGymSettings, updateStaffRole } from './actions';
+import { inviteStaff, updateGymSettings, updateStaffRole, uploadGymLogo } from './actions';
 
 export default async function SettingsPage({
   searchParams,
@@ -52,7 +52,7 @@ export default async function SettingsPage({
 
       <div className="two-col-wide">
         <Panel title="Gym profile">
-          <form action={updateGymSettings} className="stack" style={{ gap: 14 }}>
+          <form id="gym-settings-form" action={updateGymSettings} className="stack" style={{ gap: 14 }}>
             <Field label="Gym name">
               <input className="field" name="name" defaultValue={gym?.name ?? ''} required />
             </Field>
@@ -67,13 +67,75 @@ export default async function SettingsPage({
                 placeholder="#C3F400"
               />
             </Field>
-            <Field label="Logo URL">
-              <input
-                className="field"
-                name="logoUrl"
-                defaultValue={gym?.logoUrl ?? ''}
-                placeholder="https://..."
-              />
+            <Field label="Gym logo">
+              <div className="stack" style={{ gap: 12 }}>
+                {gym?.logoUrl ? (
+                  <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+                    <img
+                      src={gym.logoUrl}
+                      alt="Current gym logo"
+                      style={{
+                        width: 80,
+                        height: 80,
+                        objectFit: 'cover',
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        backgroundColor: 'rgba(255,255,255,0.05)',
+                      }}
+                    />
+                    <div className="stack" style={{ gap: 4 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>Current logo</div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        Upload a new file to replace
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="muted"
+                    style={{
+                      padding: 16,
+                      border: '1px dashed rgba(255,255,255,0.2)',
+                      borderRadius: 8,
+                      textAlign: 'center',
+                      fontSize: 13,
+                    }}
+                  >
+                    No logo uploaded yet
+                  </div>
+                )}
+
+                <form action={uploadGymLogo} className="stack" style={{ gap: 8 }}>
+                  <input
+                    type="file"
+                    name="logo"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    className="field"
+                    required
+                  />
+                  <button type="submit" className="btn btn-secondary">
+                    Upload logo
+                  </button>
+                </form>
+
+                <details style={{ fontSize: 13 }}>
+                  <summary className="muted" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Or paste a direct URL
+                  </summary>
+                  <div className="stack" style={{ gap: 8, marginTop: 8 }}>
+                    <input
+                      className="field"
+                      name="directLogoUrl"
+                      form="gym-settings-form"
+                      defaultValue={gym?.logoUrl ?? ''}
+                      placeholder="https://..."
+                    />
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      Save the form below to apply URL changes
+                    </div>
+                  </div>
+                </details>
+              </div>
             </Field>
             <Field label="Timezone">
               <input

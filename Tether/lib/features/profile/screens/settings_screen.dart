@@ -1,163 +1,237 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/app_dialog.dart';
-import '../../../core/widgets/glass_card.dart';
+
+import '../../../core/navigation/main_navigation.dart';
+import '../../../core/theme/tether_text.dart';
+import '../../../core/theme/tether_tokens.dart';
 import '../../../core/sync/background_sync.dart';
 import '../../auth/services/auth_service.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import '../../social/screens/buddies_screen.dart';
 import 'edit_profile_screen.dart';
 
-/// Settings lives under Profile (not a bottom tab).
+/// Settings screen redesign with foundry-style: dark header + cream sheet + wide cards
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: AppTheme.surface,
-      appBar: AppBar(
-        backgroundColor: AppTheme.surface,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: Text(
-          'Settings',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+      backgroundColor: TetherTokens.ink,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // DARK HEADER
+            _buildHeader(context),
+            // CREAM SHEET
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: TetherTokens.cream,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 100),
+                  children: [
+                    _buildGroup(
+                      context,
+                      'ACCOUNT',
+                      [
+                        _buildRow(
+                          context,
+                          Symbols.person,
+                          'Edit Profile',
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const EditProfileScreen(),
+                            ),
+                          ),
+                        ),
+                        _buildRow(
+                          context,
+                          Symbols.group,
+                          'Gym Buddies',
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const BuddiesScreen(),
+                            ),
+                          ),
+                        ),
+                        _buildRow(
+                          context,
+                          Symbols.notifications,
+                          'Notifications',
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const NotificationsScreen(),
+                            ),
+                          ),
+                        ),
+                        _buildRow(
+                          context,
+                          Symbols.security,
+                          'Privacy & Security',
+                          () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                    'Privacy settings coming soon'),
+                                backgroundColor: TetherTokens.ink,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _buildGroup(
+                      context,
+                      'SUPPORT',
+                      [
+                        _buildRow(
+                          context,
+                          Symbols.help,
+                          'Help & Support',
+                          () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content:
+                                    const Text('Support options coming soon'),
+                                backgroundColor: TetherTokens.ink,
+                              ),
+                            );
+                          },
+                        ),
+                        _buildRow(
+                          context,
+                          Symbols.info,
+                          'About',
+                          () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text('Tether v1.0.0'),
+                                backgroundColor: TetherTokens.ink,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    // Log out button
+                    GestureDetector(
+                      onTap: () => _confirmLogout(context, ref),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.red.shade200,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Symbols.logout,
+                              size: 20,
+                              color: Colors.red.shade600,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'LOG OUT',
+                              style: TetherText.sans(14, w: TetherTokens.w800)
+                                  .copyWith(color: Colors.red.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+            ),
+          ],
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppTheme.containerMargin,
-          8,
-          AppTheme.containerMargin,
-          40,
-        ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Row(
         children: [
-          _SettingsGroup(
-            title: 'Account',
-            children: [
-              _SettingsRow(
-                icon: Symbols.person,
-                label: 'Edit profile',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-                ),
+          // Back button
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: TetherTokens.nightCard,
+                borderRadius: BorderRadius.circular(12),
               ),
-              _SettingsRow(
-                icon: Symbols.group,
-                label: 'Gym buddies',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const BuddiesScreen(),
-                  ),
-                ),
+              child: const Icon(
+                Symbols.arrow_back,
+                color: TetherTokens.cream,
+                size: 20,
               ),
-              _SettingsRow(
-                icon: Symbols.notifications,
-                label: 'Notifications',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotificationsScreen(),
-                  ),
-                ),
-              ),
-              _SettingsRow(
-                icon: Symbols.security,
-                label: 'Privacy & security',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Privacy settings are coming soon'),
-                    ),
-                  );
-                },
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: AppTheme.stackMd),
-          _SettingsGroup(
-            title: 'Support',
-            children: [
-              _SettingsRow(
-                icon: Symbols.help,
-                label: 'Help & support',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Support options are coming soon'),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: AppTheme.stackLg),
-          SecondaryButton(
-            label: 'Log out',
-            icon: Symbols.logout,
-            onPressed: () => _confirmLogout(context, ref),
+          const SizedBox(width: 16),
+          // Title
+          Expanded(
+            child: Text(
+              'SETTINGS',
+              style: TetherText.sans(18, w: TetherTokens.w800)
+                  .copyWith(color: TetherTokens.cream),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showAppConfirmDialog(
-      context,
-      icon: Symbols.logout,
-      tone: AppDialogTone.danger,
-      title: 'Log out?',
-      message: "You'll need to sign in again to see your workouts and gym feed.",
-      confirmLabel: 'Log out',
-    );
-    if (!confirmed) return;
-    await cancelBackgroundSync();
-    await ref.read(authServiceProvider).signOut();
-  }
-}
-
-class _SettingsGroup extends StatelessWidget {
-  final String title;
-  final List<Widget> children;
-
-  const _SettingsGroup({required this.title, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildGroup(
+      BuildContext context, String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 10),
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: TetherText.sans(12, w: TetherTokens.w800)
+                .copyWith(color: TetherTokens.nightMuted),
           ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: AppTheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-            border: Border.all(color: Colors.white.withOpacity(0.07)),
-            boxShadow: AppTheme.cardElevation,
+            color: TetherTokens.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: TetherTokens.dayBorder.withValues(alpha: 0.3),
+            ),
           ),
-          clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
               for (var i = 0; i < children.length; i++) ...[
                 if (i > 0)
-                  Divider(height: 1, color: Colors.white.withOpacity(0.06)),
+                  Divider(
+                    height: 1,
+                    color: TetherTokens.dayBorder.withValues(alpha: 0.3),
+                    indent: 56,
+                  ),
                 children[i],
               ],
             ],
@@ -166,51 +240,90 @@ class _SettingsGroup extends StatelessWidget {
       ],
     );
   }
-}
 
-class _SettingsRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _SettingsRow({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
+  Widget _buildRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                color: TetherTokens.sand,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, size: 18, color: AppTheme.onSurfaceVariant),
+              child: Icon(
+                icon,
+                size: 20,
+                color: TetherTokens.defaultAccent,
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Text(
                 label,
-                style: Theme.of(context).textTheme.bodyLarge,
+                style: TetherText.sans(15, w: TetherTokens.w600)
+                    .copyWith(color: TetherTokens.ink),
               ),
             ),
-            const Icon(
+            Icon(
               Symbols.chevron_right,
               size: 18,
-              color: AppTheme.onSurfaceVariant,
+              color: TetherTokens.nightMuted,
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: TetherTokens.cream,
+        title: Text(
+          'Log Out?',
+          style: TetherText.sans(18, w: TetherTokens.w800)
+              .copyWith(color: TetherTokens.ink),
+        ),
+        content: Text(
+          "You'll need to sign in again to see your workouts and gym feed.",
+          style: TetherText.sans(14, w: TetherTokens.w400)
+              .copyWith(color: TetherTokens.nightMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'CANCEL',
+              style: TetherText.sans(13, w: TetherTokens.w800)
+                  .copyWith(color: TetherTokens.nightMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              'LOG OUT',
+              style: TetherText.sans(13, w: TetherTokens.w800)
+                  .copyWith(color: Colors.red.shade600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await cancelBackgroundSync();
+    await ref.read(authServiceProvider).signOut();
   }
 }

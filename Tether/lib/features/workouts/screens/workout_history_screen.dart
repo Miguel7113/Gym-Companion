@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/app_dialog.dart';
-import '../../../core/widgets/glass_card.dart';
+
+import '../../../core/theme/tether_text.dart';
+import '../../../core/theme/tether_tokens.dart';
 import '../models/workout_models.dart';
 import '../services/offline_workout_service.dart';
 import 'workout_detail_screen.dart';
 
+/// Workout History screen redesign with foundry-style: dark header + cream sheet + wide cards
 class WorkoutHistoryScreen extends ConsumerStatefulWidget {
   const WorkoutHistoryScreen({super.key});
 
@@ -16,7 +17,8 @@ class WorkoutHistoryScreen extends ConsumerStatefulWidget {
       _WorkoutHistoryScreenState();
 }
 
-class _WorkoutHistoryScreenState extends ConsumerState<WorkoutHistoryScreen> {
+class _WorkoutHistoryScreenState
+    extends ConsumerState<WorkoutHistoryScreen> {
   List<WorkoutSession> _sessions = [];
   bool _isLoading = true;
   bool _hasError = false;
@@ -45,8 +47,7 @@ class _WorkoutHistoryScreenState extends ConsumerState<WorkoutHistoryScreen> {
         });
       }
 
-      // Show local history immediately, then replace it with the server's
-      // complete version when the device is online.
+      // Load server data to replace local
       final sessions = await workoutService.listSessions();
       if (mounted) setState(() => _sessions = sessions);
     } catch (e) {
@@ -60,120 +61,360 @@ class _WorkoutHistoryScreenState extends ConsumerState<WorkoutHistoryScreen> {
     }
   }
 
-  Future<void> _deleteSession(String sessionId) async {
-    final confirmed = await showAppConfirmDialog(
-      context,
-      icon: Symbols.delete,
-      tone: AppDialogTone.danger,
-      title: 'Delete workout?',
-      message: 'This workout and all its sets will be permanently deleted.',
-      confirmLabel: 'Delete',
+  Future<void> _deleteSession(WorkoutSession session) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: TetherTokens.cream,
+        title: Text(
+          'Delete Workout?',
+          style: TetherText.sans(18, w: TetherTokens.w800)
+              .copyWith(color: TetherTokens.ink),
+        ),
+        content: Text(
+          'This workout and all its sets will be permanently deleted. This action cannot be undone.',
+          style: TetherText.sans(14, w: TetherTokens.w400)
+              .copyWith(color: TetherTokens.nightMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'CANCEL',
+              style: TetherText.sans(13, w: TetherTokens.w800)
+                  .copyWith(color: TetherTokens.nightMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              'DELETE',
+              style: TetherText.sans(13, w: TetherTokens.w800)
+                  .copyWith(color: Colors.red.shade600),
+            ),
+          ),
+        ],
+      ),
     );
 
     if (confirmed != true || !mounted) return;
 
     try {
       final workoutService = ref.read(offlineWorkoutServiceProvider);
-      await workoutService.deleteSession(sessionId);
+      await workoutService.deleteSession(session.id);
       if (mounted) {
-        _showSnack('Workout deleted');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Workout deleted'),
+            backgroundColor: TetherTokens.ink,
+          ),
+        );
         _loadSessions();
       }
     } catch (e) {
       debugPrint('[WorkoutHistoryScreen] _deleteSession failed: $e');
-      if (mounted) _showSnack("Couldn't delete workout", isError: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Couldn't delete workout"),
+            backgroundColor: TetherTokens.ink,
+          ),
+        );
+      }
     }
   }
 
-  void _showSnack(String message, {bool isError = false}) {
-    showAppSnack(
-      context,
-      message,
-      tone: isError ? AppSnackTone.error : AppSnackTone.success,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: TetherTokens.ink,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // DARK HEADER
+            _buildHeader(context),
+            // CREAM SHEET
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: TetherTokens.cream,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                ),
+                child: _buildContent(context),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Row(
+        children: [
+          // Back button
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: TetherTokens.nightCard,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Symbols.arrow_back,
+                color: TetherTokens.cream,
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Title and stats
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'HISTORY',
+                  style: TetherText.sans(18, w: TetherTokens.w800)
+                      .copyWith(color: TetherTokens.cream),
+                ),
+                if (_sessions.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '${_sessions.length} WORKOUTS',
+                    style: TetherText.sans(12, w: TetherTokens.w600)
+                        .copyWith(color: TetherTokens.defaultAccent),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildContent(BuildContext context) {
     if (_isLoading) {
-      return Center(
+      return const Center(
         child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryContainer),
+          color: Color(0xFFFF5A1F),
         ),
       );
     }
 
     if (_hasError) {
-      return ConnectErrorState(onRetry: _loadSessions);
+      return _buildErrorState(context);
     }
 
     if (_sessions.isEmpty) {
-      return _EmptyState();
+      return _buildEmptyState(context);
     }
 
     return RefreshIndicator(
       onRefresh: _loadSessions,
-      color: AppTheme.primaryContainer,
-      backgroundColor: AppTheme.surfaceContainerHigh,
-      child: ListView.separated(
-        padding: EdgeInsets.zero,
-        itemCount: _sessions.length,
-        separatorBuilder: (_, __) => const SizedBox(height: AppTheme.stackSm),
-        itemBuilder: (_, i) => _SessionCard(
-          session: _sessions[i],
-          onDelete: () => _deleteSession(_sessions[i].id),
+      color: TetherTokens.defaultAccent,
+      child: _buildHistoryList(context),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        SizedBox(height: MediaQuery.of(context).size.height * 0.15),
+        Center(
+          child: Column(
+            children: [
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: TetherTokens.sand,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Symbols.cloud_off,
+                  size: 48,
+                  color: TetherTokens.nightMuted,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'CONNECTION ERROR',
+                textAlign: TextAlign.center,
+                style: TetherText.sans(18, w: TetherTokens.w800)
+                    .copyWith(color: TetherTokens.ink),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Check your internet connection\nand try again',
+                textAlign: TextAlign.center,
+                style: TetherText.sans(14, w: TetherTokens.w400)
+                    .copyWith(color: TetherTokens.nightMuted),
+              ),
+              const SizedBox(height: 32),
+              GestureDetector(
+                onTap: _loadSessions,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: TetherTokens.defaultAccent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Symbols.refresh,
+                        color: TetherTokens.ink,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'RETRY',
+                        style: TetherText.sans(14, w: TetherTokens.w800)
+                            .copyWith(color: TetherTokens.ink),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Empty state
-// ─────────────────────────────────────────────────────────────────────────────
-class _EmptyState extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return EmptyState(
-      icon: Symbols.fitness_center,
-      title: 'No workouts yet',
-      message: 'Start your first workout to track your progress',
+  Widget _buildEmptyState(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        SizedBox(height: MediaQuery.of(context).size.height * 0.15),
+        Center(
+          child: Column(
+            children: [
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: TetherTokens.sand,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Symbols.fitness_center,
+                  size: 48,
+                  color: TetherTokens.nightMuted,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'NO WORKOUTS YET',
+                textAlign: TextAlign.center,
+                style: TetherText.sans(18, w: TetherTokens.w800)
+                    .copyWith(color: TetherTokens.ink),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Start your first workout to\ntrack your progress',
+                textAlign: TextAlign.center,
+                style: TetherText.sans(14, w: TetherTokens.w400)
+                    .copyWith(color: TetherTokens.nightMuted),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Session card — Pulse styled, dark surface, metric chips row
-// ─────────────────────────────────────────────────────────────────────────────
-class _SessionCard extends StatelessWidget {
-  final WorkoutSession session;
-  final VoidCallback onDelete;
+  Widget _buildHistoryList(BuildContext context) {
+    // Group sessions by month for better organization
+    final groupedSessions = <String, List<WorkoutSession>>{};
+    for (final session in _sessions) {
+      final key = _getMonthKey(session.startedAt);
+      groupedSessions.putIfAbsent(key, () => []).add(session);
+    }
 
-  const _SessionCard({required this.session, required this.onDelete});
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 100),
+      itemCount: groupedSessions.length,
+      itemBuilder: (context, groupIndex) {
+        final monthKey = groupedSessions.keys.elementAt(groupIndex);
+        final sessions = groupedSessions[monthKey]!;
 
-  String _formatDate(DateTime dt) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Month header
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 12),
+              child: Text(
+                monthKey,
+                style: TetherText.sans(14, w: TetherTokens.w800)
+                    .copyWith(color: TetherTokens.nightMuted),
+              ),
+            ),
+            // Session cards
+            ...sessions.map((session) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildSessionCard(context, session),
+                )),
+            const SizedBox(height: 12),
+          ],
+        );
+      },
+    );
+  }
+
+  String _getMonthKey(DateTime date) {
     final now = DateTime.now();
-    final diff = now.difference(dt).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    if (diff < 7) return '$diff days ago';
-    return '${dt.day}/${dt.month}/${dt.year}';
+    if (date.year == now.year && date.month == now.month) {
+      return 'THIS MONTH';
+    }
+    if (date.year == now.year && date.month == now.month - 1) {
+      return 'LAST MONTH';
+    }
+    final months = [
+      'JANUARY',
+      'FEBRUARY',
+      'MARCH',
+      'APRIL',
+      'MAY',
+      'JUNE',
+      'JULY',
+      'AUGUST',
+      'SEPTEMBER',
+      'OCTOBER',
+      'NOVEMBER',
+      'DECEMBER'
+    ];
+    return '${months[date.month - 1]} ${date.year}';
   }
 
-  String _formatTime(DateTime dt) =>
-      '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+  Widget _buildSessionCard(BuildContext context, WorkoutSession session) {
+    final exerciseCount = session.sets
+        .map((s) => s.exerciseId)
+        .toSet()
+        .length;
+    
+    final totalVolume = session.sets.fold<double>(
+      0,
+      (sum, set) => sum + (set.weightKg ?? 0) * (set.reps ?? 0),
+    );
 
-  String _formatDuration(DateTime start, DateTime end) {
-    final d = end.difference(start);
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    return h > 0 ? '${h}h ${m}m' : '${m}m';
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -182,103 +423,114 @@ class _SessionCard extends StatelessWidget {
         ),
       ),
       child: Container(
-        padding: const EdgeInsets.all(AppTheme.stackSm),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppTheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-          border: Border.all(color: Colors.white.withOpacity(0.07), width: 1),
+          color: TetherTokens.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: TetherTokens.dayBorder.withValues(alpha: 0.3),
+            width: 1,
+          ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Date block
+            // Date badge
             Container(
-              width: 48,
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              width: 56,
+              padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: AppTheme.primaryContainer.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                color: TetherTokens.sand,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 children: [
                   Text(
-                    _formatDate(session.startedAt).split(' ')[0],
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppTheme.primaryContainer,
-                      fontSize: 8,
-                    ),
-                    textAlign: TextAlign.center,
+                    _getMonthShort(session.startedAt),
+                    style: TetherText.sans(10, w: TetherTokens.w800)
+                        .copyWith(color: TetherTokens.defaultAccent),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    session.startedAt.day.toString(),
+                    style: TetherText.sans(20, w: TetherTokens.w800)
+                        .copyWith(color: TetherTokens.ink),
                   ),
                   Text(
                     _formatTime(session.startedAt),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelSmall?.copyWith(color: AppTheme.onSurface),
-                    textAlign: TextAlign.center,
+                    style: TetherText.sans(10, w: TetherTokens.w600)
+                        .copyWith(color: TetherTokens.nightMuted),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: AppTheme.stackSm),
-
+            const SizedBox(width: 16),
             // Content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _formatDate(session.startedAt),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    _formatRelativeDate(session.startedAt),
+                    style: TetherText.sans(16, w: TetherTokens.w800)
+                        .copyWith(color: TetherTokens.ink),
                   ),
                   if (session.notes != null && session.notes!.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Text(
                       session.notes!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
+                      style: TetherText.sans(13, w: TetherTokens.w400)
+                          .copyWith(color: TetherTokens.nightMuted),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  Row(
+                  const SizedBox(height: 12),
+                  // Metrics row
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      MetricChip(
-                        label: '${session.sets.length} sets',
-                        icon: Symbols.fitness_center,
+                      _buildMetricChip(
+                        '${session.sets.length} SETS',
+                        Symbols.fitness_center,
                       ),
-                      if (session.endedAt != null) ...[
-                        const SizedBox(width: 6),
-                        MetricChip(
-                          label: _formatDuration(
+                      _buildMetricChip(
+                        '$exerciseCount EXERCISES',
+                        Symbols.list,
+                      ),
+                      if (session.endedAt != null)
+                        _buildMetricChip(
+                          _formatDuration(
                             session.startedAt,
                             session.endedAt!,
                           ),
-                          icon: Symbols.timer,
+                          Symbols.timer,
                         ),
-                      ],
+                      if (totalVolume > 0)
+                        _buildMetricChip(
+                          '${totalVolume.toStringAsFixed(0)} KG',
+                          Symbols.scale,
+                        ),
                     ],
                   ),
                 ],
               ),
             ),
-
             // Delete button
             GestureDetector(
-              onTap: onDelete,
+              onTap: () => _deleteSession(session),
               child: Container(
-                padding: const EdgeInsets.all(6),
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: AppTheme.errorContainer.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Symbols.delete,
-                  size: 16,
-                  color: AppTheme.error,
+                child: Icon(
+                  Symbols.delete_outline,
+                  size: 20,
+                  color: Colors.red.shade600,
                 ),
               ),
             ),
@@ -286,5 +538,69 @@ class _SessionCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildMetricChip(String label, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: TetherTokens.sand,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: TetherTokens.defaultAccent,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TetherText.sans(11, w: TetherTokens.w600)
+                .copyWith(color: TetherTokens.ink),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getMonthShort(DateTime date) {
+    const months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC'
+    ];
+    return months[date.month - 1];
+  }
+
+  String _formatTime(DateTime dt) =>
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+  String _formatRelativeDate(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt).inDays;
+    if (diff == 0) return 'TODAY';
+    if (diff == 1) return 'YESTERDAY';
+    if (diff < 7) return '$diff DAYS AGO';
+    return '${dt.day} ${_getMonthShort(dt)} ${dt.year}';
+  }
+
+  String _formatDuration(DateTime start, DateTime end) {
+    final d = end.difference(start);
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h > 0) return '${h}H ${m}M';
+    return '${m}M';
   }
 }

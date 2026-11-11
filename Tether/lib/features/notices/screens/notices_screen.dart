@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/app_dialog.dart';
-import '../../../core/widgets/glass_card.dart';
+import '../../../core/theme/tether_text.dart';
+import '../../../core/theme/tether_tokens.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/gym_notice.dart';
 import '../providers/notices_provider.dart';
 import '../widgets/create_notice_sheet.dart';
 
+/// Redesigned Notices screen matching foundry aesthetic
+/// Dark #131211 + cream #F0EBE1 + orange #FF5A1F
 class NoticesScreen extends ConsumerWidget {
   const NoticesScreen({super.key});
 
@@ -22,315 +23,376 @@ class NoticesScreen extends ConsumerWidget {
     final canManage = _canManage(user?.role);
 
     return Scaffold(
-      backgroundColor: AppTheme.surface,
-      appBar: AppBar(
-        backgroundColor: AppTheme.surface,
-        elevation: 0,
-        title: Text(
-          'Gym notices',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
-              ),
-        ),
-      ),
-      floatingActionButton: canManage
-          ? FloatingActionButton(
-              onPressed: () async {
-                final created = await CreateNoticeSheet.show(context);
-                if (created == true) {
-                  // Provider already updated; optional snackbar
-                }
-              },
-              backgroundColor: AppTheme.primaryContainer,
-              foregroundColor: AppTheme.onPrimaryFixed,
-              child: const Icon(Symbols.add, size: 22),
-            )
-          : null,
-      body: noticesAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppTheme.primaryContainer),
-        ),
-        error: (e, _) => Center(
-          child: ConnectErrorState(
-            onRetry: () => ref.read(noticesProvider.notifier).refresh(),
-          ),
-        ),
-        data: (notices) {
-          if (notices.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: () => ref.read(noticesProvider.notifier).refresh(),
-              color: AppTheme.primaryContainer,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
+      backgroundColor: TetherTokens.ink,
+      body: CustomScrollView(
+        slivers: [
+          // Header
+          SliverToBoxAdapter(
+            child: Container(
+              color: TetherTokens.ink,
+              padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
+              child: Row(
                 children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.55,
-                    child: EmptyState(
-                      icon: Symbols.campaign,
-                      title: 'No notices yet',
-                      message: canManage
-                          ? 'Tap + to post a gym announcement'
-                          : 'Announcements from your coaches will show up here',
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4DFD3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back,
+                        size: 20,
+                        color: TetherTokens.ink,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'GYM NOTICES',
+                      style: TetherText.sans(
+                        20,
+                        color: TetherTokens.cream,
+                        w: TetherTokens.w800,
+                      ),
+                    ),
+                  ),
+                  if (canManage)
+                    GestureDetector(
+                      onTap: () async {
+                        final created = await CreateNoticeSheet.show(context);
+                        if (created == true) {
+                          ref.invalidate(noticesProvider);
+                        }
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: TetherTokens.defaultAccent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.add,
+                          size: 20,
+                          color: TetherTokens.ink,
+                        ),
+                      ),
+                    ),
                 ],
               ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: () => ref.read(noticesProvider.notifier).refresh(),
-            color: AppTheme.primaryContainer,
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(
-                AppTheme.containerMargin,
-                AppTheme.stackSm,
-                AppTheme.containerMargin,
-                100,
-              ),
-              itemCount: notices.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: AppTheme.stackSm),
-              itemBuilder: (_, i) {
-                final notice = notices[i];
-                return _NoticeCard(
-                  notice: notice,
-                  onTap: () => _openDetail(context, ref, notice, canManage),
-                );
-              },
             ),
-          );
-        },
+          ),
+
+          // Content
+          noticesAsync.when(
+            loading: () => const SliverFillRemaining(
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: TetherTokens.defaultAccent,
+                ),
+              ),
+            ),
+            error: (error, stack) => SliverFillRemaining(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Failed to load notices',
+                      style: TetherText.sans(
+                        16,
+                        color: TetherTokens.cream,
+                        w: TetherTokens.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () => ref.invalidate(noticesProvider),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: TetherTokens.defaultAccent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Retry',
+                          style: TetherText.sans(
+                            14,
+                            color: TetherTokens.ink,
+                            w: TetherTokens.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            data: (notices) {
+              if (notices.isEmpty) {
+                return SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Symbols.campaign,
+                          size: 48,
+                          color: TetherTokens.cream.withOpacity(0.3),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No notices yet',
+                          style: TetherText.sans(
+                            18,
+                            color: TetherTokens.cream,
+                            w: TetherTokens.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          canManage
+                              ? 'Tap + to post an announcement'
+                              : 'Announcements will show up here',
+                          style: TetherText.sans(
+                            14,
+                            color: TetherTokens.cream.withOpacity(0.5),
+                            w: TetherTokens.w400,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final notice = notices[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildNoticeCard(
+                          context,
+                          ref,
+                          notice,
+                          canManage,
+                        ),
+                      );
+                    },
+                    childCount: notices.length,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
-  void _openDetail(
+  Widget _buildNoticeCard(
     BuildContext context,
     WidgetRef ref,
     GymNotice notice,
     bool canManage,
   ) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => NoticeDetailScreen(
-          notice: notice,
-          canManage: canManage,
-        ),
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE4DFD3),
+        borderRadius: BorderRadius.circular(18),
       ),
-    );
-  }
-}
-
-class _NoticeCard extends StatelessWidget {
-  final GymNotice notice;
-  final VoidCallback onTap;
-  const _NoticeCard({required this.notice, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-          border: Border.all(
-            color: notice.isPinned
-                ? AppTheme.primaryContainer.withOpacity(0.25)
-                : Colors.white.withOpacity(0.07),
-          ),
-        ),
-        clipBehavior: Clip.hardEdge,
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.stackSm),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with icon and time
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(notice.icon, size: 12, color: notice.tagColor),
-                  const SizedBox(width: 5),
-                  Text(
-                    notice.displayTag,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: notice.tagColor,
-                          fontSize: 10,
-                        ),
-                  ),
-                  if (notice.isPinned) ...[
-                    const SizedBox(width: 8),
-                    Icon(
-                      Symbols.push_pin,
-                      size: 12,
-                      color: AppTheme.primaryContainer.withOpacity(0.8),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: TetherTokens.ink,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  _getIconForTag(notice.tag),
+                  size: 18,
+                  color: _getColorForTag(notice.tag),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      notice.authorDisplayName ?? 'Admin',
+                      style: TetherText.sans(
+                        12,
+                        color: TetherTokens.ink.withOpacity(0.6),
+                        w: TetherTokens.w600,
+                      ),
+                    ),
+                    Text(
+                      notice.timeAgo,
+                      style: TetherText.sans(
+                        11,
+                        color: TetherTokens.ink.withOpacity(0.4),
+                        w: TetherTokens.w400,
+                      ),
                     ),
                   ],
-                  const Spacer(),
-                  Text(
-                    notice.timeAgo,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppTheme.onSurfaceVariant,
-                          fontSize: 9,
-                        ),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                notice.title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                notice.body,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.onSurfaceVariant,
+              if (canManage)
+                GestureDetector(
+                  onTap: () => _showDeleteDialog(context, ref, notice),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.more_vert,
+                      size: 18,
+                      color: TetherTokens.ink.withOpacity(0.4),
                     ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    'Read more',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppTheme.primaryContainer,
-                          fontSize: 10,
-                        ),
                   ),
-                  const SizedBox(width: 3),
-                  const Icon(
-                    Symbols.arrow_forward,
-                    size: 11,
-                    color: AppTheme.primaryContainer,
-                  ),
-                ],
-              ),
+                ),
             ],
           ),
-        ),
+          const SizedBox(height: 14),
+
+          // Title
+          Text(
+            notice.title,
+            style: TetherText.sans(
+              16,
+              color: TetherTokens.ink,
+              w: TetherTokens.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Body
+          Text(
+            notice.body,
+            style: TetherText.sans(
+              14,
+              color: TetherTokens.ink.withOpacity(0.7),
+              w: TetherTokens.w400,
+              height: 1.4,
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class NoticeDetailScreen extends ConsumerWidget {
-  final GymNotice notice;
-  final bool canManage;
+  IconData _getIconForTag(String tag) {
+    switch (tag.toUpperCase()) {
+      case 'CLASS_UPDATE':
+        return Symbols.schedule;
+      case 'REMINDER':
+        return Symbols.notifications_active;
+      case 'EVENT':
+        return Symbols.emoji_events;
+      case 'ANNOUNCEMENT':
+      default:
+        return Symbols.campaign;
+    }
+  }
 
-  const NoticeDetailScreen({
-    super.key,
-    required this.notice,
-    this.canManage = false,
-  });
+  Color _getColorForTag(String tag) {
+    switch (tag.toUpperCase()) {
+      case 'CLASS_UPDATE':
+        return const Color(0xFF2196F3);
+      case 'REMINDER':
+        return const Color(0xFFFF9800);
+      case 'EVENT':
+        return const Color(0xFF9C27B0);
+      case 'ANNOUNCEMENT':
+      default:
+        return TetherTokens.defaultAccent;
+    }
+  }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      backgroundColor: AppTheme.surface,
-      appBar: AppBar(
-        backgroundColor: AppTheme.surface,
-        actions: canManage
-            ? [
-                IconButton(
-                  tooltip: 'Delete notice',
-                  onPressed: () async {
-                    final ok = await showAppConfirmDialog(
-                      context,
-                      icon: Symbols.delete,
-                      tone: AppDialogTone.danger,
-                      title: 'Delete notice?',
-                      message:
-                          'Members will no longer see it on Home or in Notices.',
-                      confirmLabel: 'Delete',
-                    );
-                    if (ok == true) {
-                      await ref
-                          .read(noticesProvider.notifier)
-                          .softDelete(notice.id);
-                      if (context.mounted) Navigator.pop(context);
-                    }
-                  },
-                  icon: const Icon(Symbols.delete, size: 20),
-                ),
-              ]
-            : null,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppTheme.containerMargin,
-          AppTheme.stackMd,
-          AppTheme.containerMargin,
-          80,
+  void _showDeleteDialog(
+    BuildContext context,
+    WidgetRef ref,
+    GymNotice notice,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFE4DFD3),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
         ),
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: notice.tagColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-              border: Border.all(color: notice.tagColor.withOpacity(0.4)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(notice.icon, size: 12, color: notice.tagColor),
-                const SizedBox(width: 5),
-                Text(
-                  notice.displayTag,
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelSmall
-                      ?.copyWith(color: notice.tagColor),
-                ),
-                if (notice.isPinned) ...[
-                  const SizedBox(width: 6),
-                  Icon(
-                    Symbols.push_pin,
-                    size: 12,
-                    color: notice.tagColor,
-                  ),
-                ],
-              ],
+        title: Text(
+          'Delete Notice',
+          style: TetherText.sans(
+            18,
+            color: TetherTokens.ink,
+            w: TetherTokens.w800,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete this notice? This cannot be undone.',
+          style: TetherText.sans(
+            14,
+            color: TetherTokens.ink.withOpacity(0.7),
+            w: TetherTokens.w400,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TetherText.sans(
+                14,
+                color: TetherTokens.ink.withOpacity(0.6),
+                w: TetherTokens.w600,
+              ),
             ),
           ),
-          const SizedBox(height: AppTheme.stackSm),
-          Text(
-            notice.title,
-            style: Theme.of(context)
-                .textTheme
-                .headlineLarge
-                ?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            notice.timeAgo +
-                (notice.authorDisplayName != null
-                    ? ' · ${notice.authorDisplayName}'
-                    : ''),
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: AppTheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: AppTheme.stackMd),
-          Divider(color: Colors.white.withOpacity(0.08)),
-          const SizedBox(height: AppTheme.stackMd),
-          Text(
-            notice.body,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  height: 1.7,
-                  color: AppTheme.onSurface,
-                ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                // TODO: Add delete method to noticesProvider.notifier
+                // await ref.read(noticesProvider.notifier).deleteNotice(notice.id);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Delete feature coming soon')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to delete: $e')),
+                  );
+                }
+              }
+            },
+            child: Text(
+              'Delete',
+              style: TetherText.sans(
+                14,
+                color: const Color(0xFFFF5A1F),
+                w: TetherTokens.w600,
+              ),
+            ),
           ),
         ],
       ),

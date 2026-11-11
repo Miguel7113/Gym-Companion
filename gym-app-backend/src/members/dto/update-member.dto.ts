@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
 
 export class UpdateMemberDto {
   @IsOptional()
@@ -19,4 +19,20 @@ export class UpdateMemberDto {
   @IsString()
   @MaxLength(40)
   subscriptionTier?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['male', 'female', 'other'])
+  gender?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(30)
+  @Max(300)
+  bodyWeightKg?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  bio?: string;
 }

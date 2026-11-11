@@ -147,7 +147,7 @@
 | Decision | Outcome |
 |---|---|
 | Magic link vs OTP code for email | Kept magic link. Supabase email OTP requires extra config. Deep link works on Android. |
-| Food / Nutrition tab | Shelved entirely. Food tables dropped (migration 007). 4 tabs: HOME / TRAIN / FEED / PROFILE. |
+| Food / Nutrition tab | Shelved entirely. Food tables dropped (migration 008). 4 tabs: HOME / TRAIN / FEED / PROFILE. |
 | App name | Renamed Pulse → Tether. Slogan: "Your gym, always within reach." |
 | Exercise GIFs | `free-exercise-db` images are static JPGs despite `gifUrl` field name. No fix needed — images load fine. |
 | Exercise data source | 873 exercises from `free-exercise-db` (MIT). Rejected `oss.exercisedb.dev` — broken pagination. |

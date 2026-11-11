@@ -190,9 +190,9 @@ Notable recent migrations:
 
 | File | Contents |
 |---|---|
-| `008_rls_policies.sql` | JWT helpers + gym-scoped RLS |
-| `009_workout_media_certification.sql` | Post media + coach certification |
-| `010_routine_session_link.sql` | Routine ↔ session link |
+| `009_rls_policies.sql` | JWT helpers + gym-scoped RLS |
+| `010_workout_media_certification.sql` | Post media + coach certification |
+| `011_routine_session_link.sql` | Routine ↔ session link |
 | `011_gym_timezone.sql` | Gym timezone |
 
 ---

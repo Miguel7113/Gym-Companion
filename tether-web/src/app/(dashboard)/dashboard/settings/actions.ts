@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 import { requireStaffSession } from '@/lib/auth';
 import { serverApiFetch } from '@/lib/server-api';
 import {
@@ -21,7 +22,7 @@ export async function updateGymSettings(formData: FormData) {
 
   const body = {
     name: String(formData.get('name') ?? '').trim(),
-    logoUrl: String(formData.get('logoUrl') ?? '').trim(),
+    logoUrl: String(formData.get('directLogoUrl') ?? '').trim() || String(formData.get('logoUrl') ?? '').trim(),
     primaryColor: String(formData.get('primaryColor') ?? '').trim(),
     timezone: String(formData.get('timezone') ?? '').trim(),
     contactEmail: String(formData.get('contactEmail') ?? '').trim(),
@@ -129,4 +130,88 @@ export async function updateStaffRole(formData: FormData) {
 
   revalidatePath('/dashboard/settings');
   redirect('/dashboard/settings?message=Staff%20role%20updated');
+}
+
+export async function uploadGymLogo(formData: FormData) {
+  const session = await requireStaffSession();
+  const file = formData.get('logo') as File | null;
+
+  if (!file || file.size === 0) {
+    redirect('/dashboard/settings?error=Please%20select%20a%20logo%20file.');
+  }
+
+  // Validate file type
+  const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+  if (!validTypes.includes(file.type)) {
+    redirect('/dashboard/settings?error=Logo%20must%20be%20PNG,%20JPG,%20WEBP,%20or%20SVG.');
+  }
+
+  // Validate file size (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    redirect('/dashboard/settings?error=Logo%20must%20be%20under%205MB.');
+  }
+
+  try {
+    // Create Supabase client with user's auth token
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      redirect('/dashboard/settings?error=Supabase%20configuration%20missing.');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      },
+    });
+
+    // Determine file extension
+    const ext = file.name.split('.').pop() || 'png';
+    const fileName = `${session.gymId}/logo.${ext}`;
+
+    // Convert File to ArrayBuffer for upload
+    const arrayBuffer = await file.arrayBuffer();
+    const fileBuffer = new Uint8Array(arrayBuffer);
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('gym-assets')
+      .upload(fileName, fileBuffer, {
+        upsert: true, // Replace existing logo
+        contentType: file.type,
+      });
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      redirect(
+        `/dashboard/settings?error=${encodeURIComponent(
+          uploadError.message || 'Failed to upload logo.',
+        )}`,
+      );
+    }
+
+    // Get public URL
+    const { data } = supabase.storage.from('gym-assets').getPublicUrl(fileName);
+
+    // Update gym settings with new logo URL
+    const response = await serverApiFetch(`/gyms/${session.gymId}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logoUrl: data.publicUrl }),
+      token: session.accessToken,
+    });
+
+    if (!response.ok) {
+      redirect('/dashboard/settings?error=Logo%20uploaded%20but%20failed%20to%20save%20URL.');
+    }
+
+    revalidatePath('/dashboard/settings');
+    redirect('/dashboard/settings?message=Logo%20uploaded%20successfully');
+  } catch (error) {
+    console.error('Logo upload error:', error);
+    redirect('/dashboard/settings?error=An%20unexpected%20error%20occurred.');
+  }
 }

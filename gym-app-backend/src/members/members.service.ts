@@ -146,6 +146,7 @@ export class MembersService {
         avatarPath: true,
         bodyWeightKg: true,
         heightCm: true,
+        bio: true,
         subscriptionTier: true,
         authProviderId: true,
         updatedAt: true,
@@ -225,6 +226,7 @@ export class MembersService {
     return {
       memberId: member.id,
       displayName: member.displayName ?? 'Gym member',
+      bio: member.bio ?? null,
       ...contact,
       ...(isOwnProfile
         ? {
@@ -271,6 +273,9 @@ export class MembersService {
         ...(dto.subscriptionTier !== undefined
           ? { subscriptionTier: dto.subscriptionTier.trim() }
           : {}),
+        ...(dto.gender !== undefined ? { gender: dto.gender } : {}),
+        ...(dto.bodyWeightKg !== undefined ? { bodyWeightKg: dto.bodyWeightKg } : {}),
+        ...(dto.bio !== undefined ? { bio: dto.bio?.trim() || null } : {}),
       },
       select: {
         id: true,
@@ -278,6 +283,9 @@ export class MembersService {
         email: true,
         phone: true,
         subscriptionTier: true,
+        gender: true,
+        bodyWeightKg: true,
+        bio: true,
         updatedAt: true,
       },
     });

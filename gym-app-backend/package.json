@@ -14,7 +14,8 @@
     "seed:exercises": "ts-node prisma/seed-exercises.ts",
     "seed:templates": "ts-node prisma/seed-templates.ts",
     "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "gym:create": "ts-node scripts/create-gym.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

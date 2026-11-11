@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/app_dialog.dart';
-import '../../../core/widgets/glass_card.dart';
+import '../../../core/theme/tether_palette.dart';
+import '../../../core/theme/tether_text.dart';
+import '../../../core/theme/tether_tokens.dart';
+import '../../../core/navigation/main_navigation.dart';
 import '../../../core/widgets/cached_media.dart';
+import '../../../core/providers/nav_provider.dart';
+import '../../../core/sync/sync_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import '../../profile/screens/profile_screen.dart';
-import '../../../core/providers/nav_provider.dart';
-import '../../../core/sync/sync_service.dart';
 import '../models/feed_models.dart';
 import '../providers/feed_provider.dart';
 import '../widgets/comments_sheet.dart';
 import '../widgets/create_post_sheet.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SocialScreen — Feed tab (Strava-inspired activity cards)
-// ─────────────────────────────────────────────────────────────────────────────
+/// Redesigned Feed/Social screen matching Tether design system
+/// Inspired by Pulse design but adapted to use Bricolage Grotesque + orange accent
 class SocialScreen extends ConsumerWidget {
   const SocialScreen({super.key});
 
@@ -30,94 +30,163 @@ class SocialScreen extends ConsumerWidget {
         });
       }
     });
+    
     final feedAsync = ref.watch(feedProvider);
+    final p = context.tether;
 
     return Scaffold(
-      backgroundColor: AppTheme.surface,
-      appBar: const _FeedAppBar(),
-      floatingActionButton: const _StaffFab(),
-      body: feedAsync.when(
-        loading: () =>
-            _FeedBody(posts: List.generate(3, (_) => null), isLoading: true),
-        error: (error, _) {
-          debugPrint('[SocialScreen] feed error: $error');
-          return EmptyState(
-            icon: Symbols.cloud_off,
-            title: "Can't load the feed",
-            message: 'Check your connection and try again',
-            actionLabel: 'Retry',
-            actionIcon: Symbols.refresh,
-            onAction: () => ref.read(feedProvider.notifier).refresh(),
-          );
-        },
-        data: (posts) => _FeedBody(
-          posts: posts.map((p) => p as FeedPost?).toList(),
-          isLoading: false,
+      backgroundColor: TetherTokens.ink,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context, p),
+            Expanded(
+              child: feedAsync.when(
+                loading: () => _buildLoadingState(),
+                error: (error, _) => _buildErrorState(context, ref),
+                data: (posts) => _buildFeedBody(
+                  context,
+                  ref,
+                  posts.map((p) => p as FeedPost?).toList(),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
+      floatingActionButton: _buildCreatePostFab(context, ref),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// App bar — matches Home / Train
-// ─────────────────────────────────────────────────────────────────────────────
-class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _FeedAppBar();
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
-
-  @override
-  Widget build(BuildContext context) {
-    return AppBar(
-      backgroundColor: AppTheme.surface,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      titleSpacing: AppTheme.containerMargin,
-      title: Text(
-        'Feed',
-        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.6,
-            ),
-      ),
-      centerTitle: false,
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            ),
-            icon: const Icon(
-              Symbols.notifications,
-              size: 24,
-              color: AppTheme.onSurface,
-            ),
+  Widget _buildHeader(BuildContext context, TetherPalette p) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 8, 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Feed',
+            style: TetherText.sans(32, w: TetherTokens.w800),
           ),
-        ),
-      ],
+          Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                ),
+                icon: Icon(
+                  Symbols.notifications,
+                  size: 24,
+                  color: TetherTokens.cream,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Body
-// ─────────────────────────────────────────────────────────────────────────────
-class _FeedBody extends ConsumerWidget {
-  final List<FeedPost?> posts;
-  final bool isLoading;
+  Widget _buildLoadingState() {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      itemCount: 3,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      itemBuilder: (_, __) => Container(
+        height: 400,
+        decoration: BoxDecoration(
+          color: TetherTokens.nightCard.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+    );
+  }
 
-  const _FeedBody({required this.posts, required this.isLoading});
+  Widget _buildErrorState(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Symbols.cloud_off,
+              size: 64,
+              color: TetherTokens.cream.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "Can't load the feed",
+              style: TetherText.sans(
+                20,
+                color: TetherTokens.cream,
+                w: TetherTokens.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Check your connection and try again',
+              style: TetherText.sans(
+                14,
+                color: TetherTokens.cream.withOpacity(0.5),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            GestureDetector(
+              onTap: () => ref.read(feedProvider.notifier).refresh(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: context.tether.accent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Symbols.refresh,
+                      size: 20,
+                      color: TetherTokens.ink,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Retry',
+                      style: TetherText.sans(
+                        16,
+                        color: TetherTokens.ink,
+                        w: TetherTokens.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget _buildFeedBody(
+    BuildContext context,
+    WidgetRef ref,
+    List<FeedPost?> posts,
+  ) {
+    if (posts.isEmpty) {
+      return _buildEmptyState(context, ref);
+    }
+
     return RefreshIndicator(
       onRefresh: () => ref.read(feedProvider.notifier).refresh(),
-      color: AppTheme.primaryContainer,
-      backgroundColor: AppTheme.surfaceContainerHigh,
+      color: context.tether.accent,
+      backgroundColor: TetherTokens.nightCard,
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification.metrics.pixels >=
@@ -126,165 +195,211 @@ class _FeedBody extends ConsumerWidget {
           }
           return false;
         },
-        child: CustomScrollView(
+        child: ListView.separated(
           physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            if (posts.isEmpty && !isLoading)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: EmptyState(
-                  icon: Symbols.group,
-                  title: 'No posts yet',
-                  message: 'Be the first to share a workout with your gym',
-                  actionLabel: 'Go train',
-                  actionIcon: Symbols.fitness_center,
-                  onAction: () =>
-                      ref.read(navIndexProvider.notifier).state = NavTab.train,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          itemCount: posts.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 20),
+          itemBuilder: (context, i) {
+            final post = posts[i];
+            if (post == null) {
+              return Container(
+                height: 400,
+                decoration: BoxDecoration(
+                  color: TetherTokens.nightCard.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppTheme.containerMargin,
-                  8,
-                  AppTheme.containerMargin,
-                  100,
+              );
+            }
+            return _PostCard(post: post);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Symbols.group,
+              size: 64,
+              color: TetherTokens.cream.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No posts yet',
+              style: TetherText.sans(
+                20,
+                color: TetherTokens.cream,
+                w: TetherTokens.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Be the first to share a workout with your gym',
+              style: TetherText.sans(
+                14,
+                color: TetherTokens.cream.withOpacity(0.5),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            GestureDetector(
+              onTap: () => ref.read(navIndexProvider.notifier).state = NavTab.train,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
                 ),
-                sliver: SliverList.separated(
-                  itemCount: posts.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: AppTheme.stackMd),
-                  itemBuilder: (context, i) {
-                    final post = posts[i];
-                    if (post == null) {
-                      return const SkeletonBox(
-                        width: double.infinity,
-                        height: 280,
-                        radius: AppTheme.radiusXxl,
-                      );
-                    }
-                    return _ActivityCard(post: post);
-                  },
+                decoration: BoxDecoration(
+                  color: context.tether.accent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Symbols.fitness_center,
+                      size: 20,
+                      color: TetherTokens.ink,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Go train',
+                      style: TetherText.sans(
+                        16,
+                        color: TetherTokens.ink,
+                        w: TetherTokens.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+            ),
           ],
         ),
       ),
     );
   }
+
+  Widget? _buildCreatePostFab(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    if (user == null || !{'coach', 'admin'}.contains(user.role)) {
+      return null;
+    }
+    
+    return FloatingActionButton(
+      onPressed: () => CreatePostSheet.show(
+        context,
+        onPostCreated: (post) =>
+            ref.read(feedProvider.notifier).prependPost(post),
+      ),
+      backgroundColor: context.tether.accent,
+      foregroundColor: TetherTokens.ink,
+      child: const Icon(Symbols.edit, size: 24),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Activity card — Strava-style social post
+// Post Card
 // ─────────────────────────────────────────────────────────────────────────────
-class _ActivityCard extends ConsumerWidget {
+class _PostCard extends ConsumerWidget {
   final FeedPost post;
-  const _ActivityCard({required this.post});
+  const _PostCard({required this.post});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
-    final canCertify = user != null &&
-        user.role == 'coach' &&
-        !post.isOwnPost &&
-        post.coachCertification == null;
+    final p = context.tether;
 
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(AppTheme.radiusXxl),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
-        boxShadow: AppTheme.cardElevation,
+        color: TetherTokens.nightCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: TetherTokens.cream.withOpacity(0.1),
+          width: 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PostHeader(
-            post: post,
-            onReport: () => _confirmFlag(context, ref),
+          // Post Header (avatar, name, time)
+          _PostHeader(post: post),
+
+          // Hero Image (if exists)
+          if (post.imageUrl != null || post.workoutSummary != null)
+            _PostHeroImage(post: post),
+
+          // Content
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Achievement chips
+                if (post.workoutSummary != null)
+                  _AchievementChips(post: post),
+
+                // Caption
+                if (post.content.trim().isNotEmpty) ...[
+                  if (post.workoutSummary != null) const SizedBox(height: 12),
+                  Text(
+                    post.content,
+                    style: TetherText.sans(
+                      15,
+                      color: TetherTokens.cream,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+
+                // Workout stats
+                if (post.workoutSummary != null) ...[
+                  const SizedBox(height: 16),
+                  _WorkoutStats(post: post),
+                ],
+
+                // Coach certification
+                if (post.coachCertification != null) ...[
+                  const SizedBox(height: 12),
+                  _CoachCertification(cert: post.coachCertification!),
+                ],
+              ],
+            ),
           ),
-          if (post.workoutSummary != null)
-            _WorkoutActivityBody(
-              post: post,
-              canCertify: canCertify,
-              onCertify: () =>
-                  ref.read(feedProvider.notifier).certifyPost(post.id),
-            )
-          else if (post.imageUrl != null)
-            _ImageActivityBody(post: post)
-          else ...[
-            if (post.content.trim().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Text(
-                  post.content,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-            if (post.tags.isNotEmpty) _TagChipRow(tags: post.tags),
-          ],
-          _PostFooter(
-            post: post,
-            onLikeTap: () =>
-                ref.read(feedProvider.notifier).toggleLike(post.id),
-            onCommentTap: () => CommentsSheet.show(context, postId: post.id),
-            onFlagTap: () => _confirmFlag(context, ref),
-          ),
+
+          // Actions footer
+          const SizedBox(height: 12),
+          _PostActions(post: post),
         ],
       ),
     );
   }
-
-  Future<void> _confirmFlag(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showAppConfirmDialog(
-      context,
-      icon: Symbols.flag,
-      tone: AppDialogTone.danger,
-      title: 'Report post?',
-      message:
-          'It will be hidden from your feed and sent to the gym team for review.',
-      confirmLabel: 'Report',
-    );
-    if (confirmed == true) {
-      ref.read(feedProvider.notifier).flagPost(post.id);
-      if (context.mounted) {
-        showAppSnack(
-          context,
-          'Post reported and removed from your feed',
-          tone: AppSnackTone.success,
-        );
-      }
-    }
-  }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Post Header
+// ─────────────────────────────────────────────────────────────────────────────
 class _PostHeader extends StatelessWidget {
   final FeedPost post;
-  final VoidCallback onReport;
-
-  const _PostHeader({required this.post, required this.onReport});
-
-  String get _activityLabel {
-    switch (post.achievementType) {
-      case 'pr':
-        return 'Personal record';
-      case 'workout_complete':
-        return 'Completed a workout';
-      case 'announcement':
-        return 'Announcement';
-      default:
-        return post.workoutSummary != null ? 'Workout' : 'Post';
-    }
-  }
+  const _PostHeader({required this.post});
 
   @override
   Widget build(BuildContext context) {
+    final p = context.tether;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
+      padding: const EdgeInsets.all(16),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Avatar
           GestureDetector(
             onTap: () => Navigator.push(
               context,
@@ -293,35 +408,39 @@ class _PostHeader extends StatelessWidget {
               ),
             ),
             child: Container(
-              width: 42,
-              height: 42,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppTheme.surfaceContainerHighest,
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                border: Border.all(
+                  color: p.accent.withOpacity(0.3),
+                  width: 2,
+                ),
               ),
               child: ClipOval(
                 child: post.authorAvatarUrl != null
                     ? AppCachedImage(
                         url: post.authorAvatarUrl,
-                        width: 42,
-                        height: 42,
+                        width: 48,
+                        height: 48,
                         fit: BoxFit.cover,
-                        fallback: const Icon(
+                        fallback: Icon(
                           Symbols.person,
-                          size: 20,
-                          color: AppTheme.onSurfaceVariant,
+                          size: 24,
+                          color: TetherTokens.cream.withOpacity(0.3),
                         ),
                       )
-                    : const Icon(
+                    : Icon(
                         Symbols.person,
-                        size: 20,
-                        color: AppTheme.onSurfaceVariant,
+                        size: 24,
+                        color: TetherTokens.cream.withOpacity(0.3),
                       ),
               ),
             ),
           ),
           const SizedBox(width: 12),
+
+          // Name and time
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,106 +448,118 @@ class _PostHeader extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MemberProfileScreen(
-                              memberId: post.authorId,
-                            ),
-                          ),
+                      child: Text(
+                        post.authorName.toUpperCase(),
+                        style: TetherText.sans(
+                          16,
+                          color: TetherTokens.cream,
+                          w: TetherTokens.w800,
                         ),
-                        child: Text(
-                          post.authorName,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: post.authorIsStaff
-                                        ? AppTheme.primaryContainer
-                                        : AppTheme.onSurface,
-                                  ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (post.authorIsStaff) ...[
-                      const SizedBox(width: 6),
-                      _StaffBadge(
-                        label: post.authorStaffRole ?? 'Staff',
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: p.accent.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: p.accent,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          post.authorStaffRole?.toUpperCase() ?? 'STAFF',
+                          style: TetherText.sans(
+                            10,
+                            color: p.accent,
+                            w: TetherTokens.w600,
+                          ),
+                        ),
                       ),
                     ],
                   ],
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$_activityLabel · ${post.timeAgo}',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: AppTheme.onSurfaceVariant,
-                      ),
+                  '${post.timeAgo} • ${_getActivityType(post)}',
+                  style: TetherText.sans(
+                    12,
+                    color: TetherTokens.cream.withOpacity(0.5),
+                  ),
                 ),
               ],
             ),
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(
+
+          // Menu
+          IconButton(
+            onPressed: () => _showPostMenu(context, post),
+            icon: Icon(
               Symbols.more_horiz,
-              size: 20,
-              color: AppTheme.onSurfaceVariant,
+              size: 24,
+              color: TetherTokens.cream.withOpacity(0.5),
             ),
-            color: AppTheme.surfaceContainerHigh,
-            onSelected: (value) {
-              if (value == 'report') onReport();
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'report',
-                child: Text('Report post'),
-              ),
-            ],
           ),
         ],
       ),
     );
   }
-}
 
-class _StaffBadge extends StatelessWidget {
-  final String label;
-  const _StaffBadge({required this.label});
+  String _getActivityType(FeedPost post) {
+    if (post.achievementType == 'pr') return 'Personal Record';
+    if (post.workoutSummary != null) return 'Workout';
+    return 'Post';
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final display = label.isEmpty
-        ? 'Staff'
-        : '${label[0].toUpperCase()}${label.substring(1)}';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryContainer.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-        border: Border.all(
-          color: AppTheme.primaryContainer.withOpacity(0.35),
-        ),
+  void _showPostMenu(BuildContext context, FeedPost post) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: TetherTokens.nightCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Text(
-        display,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: AppTheme.primaryContainer,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Symbols.flag, color: TetherTokens.cream),
+              title: Text(
+                'Report post',
+                style: TetherText.sans(16, color: TetherTokens.cream),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                // Handle report
+              },
             ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ImageActivityBody extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero Image
+// ─────────────────────────────────────────────────────────────────────────────
+class _PostHeroImage extends StatelessWidget {
   final FeedPost post;
-  const _ImageActivityBody({required this.post});
+  const _PostHeroImage({required this.post});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    if (post.imageUrl == null) return const SizedBox.shrink();
+
+    return Stack(
       children: [
         AspectRatio(
           aspectRatio: 16 / 10,
@@ -438,172 +569,135 @@ class _ImageActivityBody extends StatelessWidget {
             height: double.infinity,
             fit: BoxFit.cover,
             fallback: Container(
-              color: AppTheme.surfaceContainerLowest,
-              child: const Center(
-                child: Icon(
-                  Symbols.image,
-                  size: 40,
-                  color: AppTheme.onSurfaceVariant,
-                ),
+              color: TetherTokens.ink,
+              child: Icon(
+                Symbols.image,
+                size: 48,
+                color: TetherTokens.cream.withOpacity(0.3),
               ),
             ),
           ),
         ),
-        if (post.content.trim().isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text(
-              post.content,
-              style: Theme.of(context).textTheme.bodyLarge,
+        // Gradient overlay for text legibility
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.4),
+                ],
+              ),
             ),
           ),
-        if (post.tags.isNotEmpty) _TagChipRow(tags: post.tags),
+        ),
       ],
     );
   }
 }
 
-class _WorkoutActivityBody extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// Achievement Chips
+// ─────────────────────────────────────────────────────────────────────────────
+class _AchievementChips extends StatelessWidget {
   final FeedPost post;
-  final bool canCertify;
-  final VoidCallback onCertify;
+  const _AchievementChips({required this.post});
 
-  const _WorkoutActivityBody({
-    required this.post,
-    this.canCertify = false,
-    required this.onCertify,
-  });
+  @override
+  Widget build(BuildContext context) {
+    final summary = post.workoutSummary;
+    if (summary == null) return const SizedBox.shrink();
+
+    final chips = <Widget>[];
+    final p = context.tether;
+
+    // PR chip (if it's a PR)
+    if (post.achievementType == 'pr') {
+      chips.add(_buildChip(context, 'PR', isPr: true));
+    }
+
+    // Volume chip
+    final volume = (summary['volumeKg'] as num?)?.toDouble() ?? 0;
+    if (volume > 0) {
+      chips.add(_buildChip(context, '${volume.toInt()} KG', isPr: true));
+    }
+
+    // Exercise names
+    final exercises = (summary['exerciseNames'] as List?)
+        ?.whereType<String>()
+        .take(2)
+        .toList() ??
+        [];
+    for (final ex in exercises) {
+      chips.add(_buildChip(context, ex.toUpperCase()));
+    }
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: chips,
+    );
+  }
+
+  Widget _buildChip(BuildContext context, String label, {bool isPr = false}) {
+    final p = context.tether;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isPr ? p.accent.withOpacity(0.2) : TetherTokens.ink,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isPr ? p.accent : TetherTokens.cream.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TetherText.sans(
+          12,
+          color: isPr ? p.accent : TetherTokens.cream,
+          w: TetherTokens.w600,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Workout Stats
+// ─────────────────────────────────────────────────────────────────────────────
+class _WorkoutStats extends StatelessWidget {
+  final FeedPost post;
+  const _WorkoutStats({required this.post});
 
   @override
   Widget build(BuildContext context) {
     final summary = post.workoutSummary!;
     final durationSeconds = (summary['durationSeconds'] as num?)?.toInt() ?? 0;
     final minutes = durationSeconds ~/ 60;
-    final seconds = durationSeconds % 60;
-    final duration = seconds == 0 ? '${minutes}m' : '${minutes}m ${seconds}s';
     final sets = (summary['totalSets'] as num?)?.toInt() ?? 0;
     final exercises = (summary['exerciseCount'] as num?)?.toInt() ?? 0;
-    final volume = (summary['volumeKg'] as num?)?.toDouble() ?? 0;
-    final exerciseNames = (summary['exerciseNames'] as List?)
-            ?.whereType<String>()
-            .take(3)
-            .join(' · ') ??
-        '';
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (post.imageUrl != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: AppCachedImage(
-                    url: post.imageUrl,
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.cover,
-                    fallback: Container(
-                      color: AppTheme.surfaceContainerLowest,
-                      child: const Icon(
-                        Symbols.image,
-                        color: AppTheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          if (post.content.trim().isNotEmpty) ...[
-            Text(post.content, style: Theme.of(context).textTheme.bodyLarge),
-            const SizedBox(height: 12),
-          ],
-          // Strava-style metric strip
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-              border: Border.all(color: Colors.white.withOpacity(0.06)),
-            ),
-            child: Row(
-              children: [
-                _WorkoutMetric(value: duration, label: 'Time'),
-                _WorkoutMetric(value: '$sets', label: 'Sets'),
-                _WorkoutMetric(value: '$exercises', label: 'Exercises'),
-                _WorkoutMetric(
-                  value: '${volume.toStringAsFixed(0)} kg',
-                  label: 'Volume',
-                ),
-              ],
-            ),
-          ),
-          if (exerciseNames.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              exerciseNames,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: AppTheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-          if (post.coachCertification != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(
-                  Symbols.verified,
-                  size: 16,
-                  color: AppTheme.primaryContainer,
-                  fill: 1,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Certified by ${post.coachCertification!.coachName} · '
-                    '${post.coachCertification!.dateLabel}',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: AppTheme.primaryContainer,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ] else if (canCertify) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: onCertify,
-                icon: const Icon(Symbols.verified, size: 16),
-                label: const Text('Certify workout'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primaryContainer,
-                  side: BorderSide(
-                    color: AppTheme.primaryContainer.withOpacity(0.45),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+    return Row(
+      children: [
+        _StatItem(label: 'TIME', value: '${minutes}m'),
+        _StatItem(label: 'SETS', value: '$sets'),
+        _StatItem(label: 'EXERCISES', value: '$exercises'),
+      ],
     );
   }
 }
 
-class _WorkoutMetric extends StatelessWidget {
-  final String value;
+class _StatItem extends StatelessWidget {
   final String label;
+  final String value;
 
-  const _WorkoutMetric({required this.value, required this.label});
+  const _StatItem({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -613,19 +707,20 @@ class _WorkoutMetric extends StatelessWidget {
         children: [
           Text(
             value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                ),
+            style: TetherText.sans(
+              20,
+              color: TetherTokens.cream,
+              w: TetherTokens.w800,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: AppTheme.onSurfaceVariant,
-                ),
+            style: TetherText.sans(
+              10,
+              color: TetherTokens.cream.withOpacity(0.5),
+              w: TetherTokens.w600,
+            ),
           ),
         ],
       ),
@@ -633,88 +728,85 @@ class _WorkoutMetric extends StatelessWidget {
   }
 }
 
-class _TagChipRow extends StatelessWidget {
-  final List<String> tags;
-  const _TagChipRow({required this.tags});
+// ─────────────────────────────────────────────────────────────────────────────
+// Coach Certification
+// ─────────────────────────────────────────────────────────────────────────────
+class _CoachCertification extends StatelessWidget {
+  final CoachCertification cert;
+  const _CoachCertification({required this.cert});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: tags.map((t) {
-          final highlighted = t.contains('PR') || t.contains('KG');
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: highlighted
-                  ? AppTheme.primaryContainer.withOpacity(0.12)
-                  : AppTheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-              border: Border.all(
-                color: highlighted
-                    ? AppTheme.primaryContainer.withOpacity(0.35)
-                    : Colors.white.withOpacity(0.08),
-              ),
+    final p = context.tether;
+
+    return Row(
+      children: [
+        Icon(
+          Symbols.verified,
+          size: 18,
+          color: p.accent,
+          fill: 1,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            'Certified by ${cert.coachName} · ${cert.dateLabel}',
+            style: TetherText.sans(
+              12,
+              color: p.accent,
+              w: TetherTokens.w600,
             ),
-            child: Text(
-              t,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: highlighted
-                        ? AppTheme.primaryContainer
-                        : AppTheme.onSurfaceVariant,
-                  ),
-            ),
-          );
-        }).toList(),
-      ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _PostFooter extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// Post Actions (like, comment, share)
+// ─────────────────────────────────────────────────────────────────────────────
+class _PostActions extends ConsumerWidget {
   final FeedPost post;
-  final VoidCallback onLikeTap;
-  final VoidCallback onCommentTap;
-  final VoidCallback onFlagTap;
-
-  const _PostFooter({
-    required this.post,
-    required this.onLikeTap,
-    required this.onCommentTap,
-    required this.onFlagTap,
-  });
+  const _PostActions({required this.post});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = context.tether;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.06)),
+          top: BorderSide(
+            color: TetherTokens.cream.withOpacity(0.1),
+            width: 1,
+          ),
         ),
       ),
       child: Row(
         children: [
           _ActionButton(
             icon: Symbols.favorite,
-            label: post.likeCount > 0 ? '${post.likeCount}' : 'Kudos',
+            label: post.likeCount > 0 ? '${post.likeCount}' : 'Like',
             active: post.isLiked,
-            onTap: onLikeTap,
+            onTap: () => ref.read(feedProvider.notifier).toggleLike(post.id),
           ),
           _ActionButton(
             icon: Symbols.chat_bubble,
             label: post.commentCount > 0 ? '${post.commentCount}' : 'Comment',
-            onTap: onCommentTap,
+            onTap: () => CommentsSheet.show(context, postId: post.id),
           ),
           const Spacer(),
           IconButton(
-            onPressed: onFlagTap,
-            icon: const Icon(Symbols.flag, size: 18),
-            color: AppTheme.onSurfaceVariant,
-            tooltip: 'Report',
+            onPressed: () {
+              // Share functionality
+            },
+            icon: Icon(
+              Symbols.share,
+              size: 20,
+              color: TetherTokens.cream.withOpacity(0.5),
+            ),
           ),
         ],
       ),
@@ -737,45 +829,19 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        active ? AppTheme.primaryContainer : AppTheme.onSurfaceVariant;
+    final p = context.tether;
+    final color = active ? p.accent : TetherTokens.cream.withOpacity(0.7);
+
     return TextButton.icon(
       onPressed: onTap,
-      icon: Icon(icon, size: 18, color: color, fill: active ? 1 : 0),
+      icon: Icon(icon, size: 20, color: color, fill: active ? 1 : 0),
       label: Text(
         label,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color),
+        style: TetherText.sans(14, color: color, w: TetherTokens.w600),
       ),
       style: TextButton.styleFrom(
-        foregroundColor: color,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Staff FAB
-// ─────────────────────────────────────────────────────────────────────────────
-class _StaffFab extends ConsumerWidget {
-  const _StaffFab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
-    if (user == null || !{'coach', 'admin'}.contains(user.role)) {
-      return const SizedBox.shrink();
-    }
-    return FloatingActionButton(
-      onPressed: () => CreatePostSheet.show(
-        context,
-        onPostCreated: (post) =>
-            ref.read(feedProvider.notifier).prependPost(post),
-      ),
-      backgroundColor: AppTheme.primaryContainer,
-      foregroundColor: AppTheme.onPrimaryFixed,
-      elevation: 4,
-      child: const Icon(Symbols.edit, size: 22),
     );
   }
 }

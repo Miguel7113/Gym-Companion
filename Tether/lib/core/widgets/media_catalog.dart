@@ -7,6 +7,7 @@ abstract final class AppMedia {
   static const homeWorkout = 'assets/images/home_workout.jpg';
   static const homeStats = 'assets/images/home_stats.jpg';
   static const homeTrainer = 'assets/images/home_trainer.jpg';
+  static const authHero = 'assets/images/auth_hero.jpg';
 
   static const _bodyPartAssets = <String, String>{
     'chest': 'assets/body_parts/chest.png',

@@ -1,10 +1,88 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateGymSettingsDto } from './dto/update-gym-settings.dto';
 
+export interface CreateGymInput {
+  name: string;
+  adminEmail: string;
+  adminPassword: string;
+  primaryColor?: string;
+  timezone?: string;
+  logoUrl?: string;
+  contactEmail?: string;
+}
+
 @Injectable()
 export class GymsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auth: AuthService,
+  ) {}
+
+  /** Onboards a gym: the gym row plus an admin who can sign in to the portal. */
+  async createGymWithAdmin(input: CreateGymInput) {
+    const name = input.name.trim();
+    const adminEmail = input.adminEmail.trim().toLowerCase();
+    const primaryColor = input.primaryColor?.trim() || null;
+    const timezone = input.timezone?.trim() || 'UTC';
+
+    if (name.length < 2) throw new BadRequestException('Gym name is required.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+      throw new BadRequestException('Admin email is not valid.');
+    }
+    if (input.adminPassword.length < 8) {
+      throw new BadRequestException('Admin password must be at least 8 characters.');
+    }
+    if (primaryColor && !/^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
+      throw new BadRequestException('Colour must look like #FF7A00.');
+    }
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: timezone });
+    } catch {
+      throw new BadRequestException(`Unknown timezone "${timezone}".`);
+    }
+
+    const [sameName, staff] = await Promise.all([
+      this.prisma.gym.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } },
+        select: { id: true },
+      }),
+      this.prisma.gymStaff.findUnique({ where: { email: adminEmail } }),
+    ]);
+    if (sameName) throw new ConflictException(`A gym called "${name}" already exists.`);
+    if (staff) {
+      throw new ConflictException(`${adminEmail} is already staff at another gym.`);
+    }
+
+    const gym = await this.prisma.gym.create({
+      data: {
+        name,
+        primaryColor,
+        timezone,
+        logoUrl: input.logoUrl?.trim() || null,
+        contactEmail: input.contactEmail?.trim() || adminEmail,
+      },
+    });
+
+    try {
+      await this.auth.staffInvite(gym.id, {
+        email: adminEmail,
+        password: input.adminPassword,
+        role: 'admin',
+      });
+    } catch (error) {
+      await this.prisma.gym.delete({ where: { id: gym.id } }).catch(() => undefined);
+      throw error;
+    }
+
+    return { gym, adminEmail };
+  }
 
   listActive() {
     return this.prisma.gym.findMany({

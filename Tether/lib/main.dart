@@ -6,9 +6,11 @@ import 'core/config/supabase_config.dart';
 import 'core/navigation/main_navigation.dart';
 import 'core/providers/api_provider.dart';
 import 'core/sync/sync_service.dart';
-import 'features/auth/screens/gym_selection_screen.dart';
+import 'features/auth/screens/welcome_screen.dart';
 import 'features/auth/screens/set_password_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/onboarding/screens/onboarding_flow_screen.dart';
+import 'features/onboarding/providers/onboarding_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SKIP_LOGIN_FOR_TESTING
@@ -35,12 +37,15 @@ Future<void> main() async {
 // e.g.: supabase.from('gyms').select()
 SupabaseClient get supabase => Supabase.instance.client;
 
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
+      navigatorKey: _rootNavigatorKey,
       title: 'Tether',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
@@ -78,9 +83,27 @@ class _AuthGate extends ConsumerStatefulWidget {
 class _AuthGateState extends ConsumerState<_AuthGate> {
   bool _isClaiming = false;
   String? _claimError; // shown if claim-session fails
+  bool _resettingPassword = false; // opened a password reset link
 
   @override
   Widget build(BuildContext context) {
+    // The gate only swaps the root route. Screens pushed on top of it
+    // (settings, sign-in forms) would otherwise stay visible after signing
+    // out, or after a magic link signs the user in.
+    ref.listen(authStateStreamProvider, (previous, next) {
+      final hadSession = previous?.valueOrNull?.session != null;
+      final hasSession = next.valueOrNull?.session != null;
+      if (hadSession != hasSession) {
+        _rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+      }
+      final event = next.valueOrNull?.event;
+      if (event == AuthChangeEvent.passwordRecovery) {
+        setState(() => _resettingPassword = true);
+      } else if (!hasSession && _resettingPassword) {
+        setState(() => _resettingPassword = false);
+      }
+    });
+
     final authAsync = ref.watch(authStateStreamProvider);
 
     return authAsync.when(
@@ -118,22 +141,39 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
             return const _SplashScreen();
           }
 
+          if (hasGymClaims && _resettingPassword) {
+            return SetPasswordScreen(
+              isReset: true,
+              onDone: () => setState(() => _resettingPassword = false),
+            );
+          }
+
           // Session has gym claims but password not yet set — first signup
           if (hasGymClaims && !hasPassword) {
             return const SetPasswordScreen();
           }
 
-          // Fully authenticated with password set — show the app
-          // Trigger exercise cache seed in background (no-op if already fresh)
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ref.read(syncServiceProvider).seedIfNeeded();
-          });
-          return const MainNavigation();
+          // Fully authenticated with password set — check onboarding status
+          if (hasGymClaims && hasPassword) {
+            final onboardingState = ref.watch(onboardingProvider);
+            
+            // If onboarding not complete, show onboarding flow
+            if (!onboardingState.isComplete) {
+              return const OnboardingFlowScreen();
+            }
+            
+            // Onboarding complete — show the app
+            // Trigger exercise cache seed in background (no-op if already fresh)
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ref.read(syncServiceProvider).seedIfNeeded();
+            });
+            return const MainNavigation();
+          }
         }
-        return const GymSelectionScreen();
+        return const WelcomeScreen();
       },
       loading: () => const _SplashScreen(),
-      error: (_, __) => const GymSelectionScreen(),
+      error: (_, __) => const WelcomeScreen(),
     );
   }
 

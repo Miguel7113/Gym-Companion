@@ -333,6 +333,8 @@ class BuilderSet {
   final int? durationSecs;
   final double? distanceM;
   final double? speedKph;
+  // Rest
+  final int? restSeconds;
 
   BuilderSet({
     this.weightKg,
@@ -342,6 +344,7 @@ class BuilderSet {
     this.durationSecs,
     this.distanceM,
     this.speedKph,
+    this.restSeconds,
   });
 
   BuilderSet copyWith({
@@ -352,6 +355,7 @@ class BuilderSet {
     int? durationSecs,
     double? distanceM,
     double? speedKph,
+    int? restSeconds,
   }) {
     return BuilderSet(
       weightKg: weightKg ?? this.weightKg,
@@ -361,6 +365,7 @@ class BuilderSet {
       durationSecs: durationSecs ?? this.durationSecs,
       distanceM: distanceM ?? this.distanceM,
       speedKph: speedKph ?? this.speedKph,
+      restSeconds: restSeconds ?? this.restSeconds,
     );
   }
 }
@@ -374,24 +379,28 @@ class BuilderExerciseEntry {
   final Exercise exercise;
   final List<BuilderSet> sets;
   final bool isExpanded;
+  final int? defaultRestSeconds; // Default rest time for all sets
 
   BuilderExerciseEntry({
     required this.uid,
     required this.exercise,
     List<BuilderSet>? sets,
     this.isExpanded = true,
-  }) : sets = sets ?? [BuilderSet()];
+    this.defaultRestSeconds = 90, // Default 90 seconds
+  }) : sets = sets ?? [BuilderSet(restSeconds: 90)];
 
   BuilderExerciseEntry copyWith({
     Exercise? exercise,
     List<BuilderSet>? sets,
     bool? isExpanded,
+    int? defaultRestSeconds,
   }) {
     return BuilderExerciseEntry(
       uid: uid,
       exercise: exercise ?? this.exercise,
       sets: sets ?? this.sets,
       isExpanded: isExpanded ?? this.isExpanded,
+      defaultRestSeconds: defaultRestSeconds ?? this.defaultRestSeconds,
     );
   }
 }

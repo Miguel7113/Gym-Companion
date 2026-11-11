@@ -95,24 +95,6 @@ class AuthService {
     await _apiClient.setAccessToken(accessToken);
   }
 
-  /// Coach/admin app login — staff credentials, member-shaped JWT with role.
-  Future<void> coachLogin({
-    required String email,
-    required String password,
-  }) async {
-    final response = await _apiClient.post('/auth/coach/login', data: {
-      'email': email,
-      'password': password,
-    });
-
-    final data = response.data as Map<String, dynamic>;
-    final accessToken = data['accessToken'] as String;
-    final refreshToken = data['refreshToken'] as String;
-
-    await sb.Supabase.instance.client.auth.setSession(refreshToken);
-    await _apiClient.setAccessToken(accessToken);
-  }
-
   // ── Set password (once, after first OTP/magic link verification) ──────────
 
   Future<void> setPassword(String password) async {
@@ -129,6 +111,15 @@ class AuthService {
     if (refreshed.session != null) {
       await _apiClient.setAccessToken(refreshed.session!.accessToken);
     }
+  }
+
+  /// Saves the name chosen during first sign-in to the profile and the JWT
+  /// metadata, so the app greets the member by it straight away.
+  Future<void> setDisplayName(String name) async {
+    await _apiClient.patch('/users/me/profile', data: {'displayName': name});
+    await sb.Supabase.instance.client.auth.updateUser(
+      sb.UserAttributes(data: {'display_name': name}),
+    );
   }
 
   // ── Forgot password ───────────────────────────────────────────────────────

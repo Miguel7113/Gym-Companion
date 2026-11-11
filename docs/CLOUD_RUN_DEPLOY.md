@@ -30,7 +30,9 @@ gcloud run deploy tether-api --source . --region europe-north1 --quiet
 ```
 
 Env vars, secrets and the service account carry over between deploys.
-`CORS_ORIGIN` is `*` until the portal is deployed — then lock it (section 3).
+`CORS_ORIGIN` is locked to the portal URL. The portal calls the API from its
+server and the Flutter app isn't subject to CORS, so only browsers on other
+origins are refused.
 
 ---
 
